@@ -1,0 +1,143 @@
+version: '3.8'
+
+services:
+  # ─── Application ─────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nebula-app
+    ports:
+      - '3000:3000'
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - API_PREFIX=api/v1
+      - DATABASE_URL=postgresql://nebulaTwin:nebulaTwin@postgres:5432/nebula_twin?schema=public
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=nebulaTwin
+      - KAFKA_BROKERS=kafka:9092
+      - MQTT_URL=mqtt://nebulaTwin:nebulaTwin@mosquitto:1883
+      - MQTT_USERNAME=nebulaTwin
+      - MQTT_PASSWORD=nebulaTwin
+      - JWT_SECRET=nebulaTwin
+      - JWT_EXPIRES_IN=1d
+      - JWT_REFRESH_SECRET=nebulaTwin
+      - JWT_REFRESH_EXPIRES_IN=7d
+      - THROTTLE_TTL=60
+      - THROTTLE_LIMIT=100
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:4200
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    volumes:
+      - uploads:/app/uploads
+    networks:
+      - nebula-net
+    restart: unless-stopped
+
+  # ─── PostgreSQL + TimescaleDB ────────────────────────────
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    container_name: nebula-postgres
+    ports:
+      - '5433:5432'
+    environment:
+      POSTGRES_USER: nebulaTwin
+      POSTGRES_PASSWORD: nebulaTwin
+      POSTGRES_DB: nebula_twin
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./prisma/migrations/00000000000000_init_timescaledb/migration.sql:/docker-entrypoint-initdb.d/01-timescaledb.sql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U nebulaTwin -d nebula_twin']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - nebula-net
+    restart: unless-stopped
+
+  # ─── Redis ──────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: nebula-redis
+    ports:
+      - '6379:6379'
+    command: redis-server --requirepass nebulaTwin
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', '-a', 'nebulaTwin', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - nebula-net
+    restart: unless-stopped
+
+  # ─── Kafka (KRaft, no Zookeeper) ────────────────────────
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: nebula-kafka
+    ports:
+      - '9092:9092'
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      CLUSTER_ID: 'nebula-twin-kafka-cluster-01'
+    networks:
+      - nebula-net
+    restart: unless-stopped
+
+  # ─── MQTT Broker (Mosquitto) ───────────────────────────
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: nebula-mosquitto
+    ports:
+      - '1884:1883'
+      - '9002:9001'
+    volumes:
+      - ./docker/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquittodata:/mosquitto/data
+      - mosquittolog:/mosquitto/log
+    networks:
+      - nebula-net
+    restart: unless-stopped
+
+  # ─── NGINX API Gateway ─────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: nebula-nginx
+    ports:
+      - '80:80'
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - app
+    networks:
+      - nebula-net
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
+  mosquittodata:
+  mosquittolog:
+  uploads:
+
+networks:
+  nebula-net:
+    driver: bridge

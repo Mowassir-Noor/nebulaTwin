@@ -1,0 +1,268 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ──────────────────────────────────────
+// Enums
+// ──────────────────────────────────────
+
+enum Role {
+  ADMIN
+  MANAGER
+  OPERATOR
+  VIEWER
+}
+
+enum SensorMode {
+  REAL
+  MANUAL
+  STREAM
+}
+
+enum AssetType {
+  FACTORY
+  LINE
+  MACHINE
+  COMPONENT
+}
+
+enum StreamPattern {
+  CONSTANT
+  LINEAR_INCREASE
+  LINEAR_DECREASE
+  SINE
+  RANDOM
+}
+
+// ──────────────────────────────────────
+// Multi-Tenant
+// ──────────────────────────────────────
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users        User[]
+  digitalTwins DigitalTwin[]
+  sensors      Sensor[]
+  auditLogs    AuditLog[]
+
+  @@map("tenants")
+}
+
+// ──────────────────────────────────────
+// Users & Auth
+// ──────────────────────────────────────
+
+model User {
+  id           String  @id @default(uuid())
+  email        String  @unique
+  passwordHash String? @map("password_hash")
+  googleId     String? @unique @map("google_id")
+  name         String?
+  role         Role    @default(VIEWER)
+
+  tenantId String @map("tenant_id")
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  refreshToken String? @map("refresh_token")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  auditLogs AuditLog[]
+
+  @@index([tenantId])
+  @@map("users")
+}
+
+// ──────────────────────────────────────
+// Digital Twins & Assets
+// ──────────────────────────────────────
+
+model DigitalTwin {
+  id          String  @id @default(uuid())
+  name        String
+  description String?
+
+  tenantId String @map("tenant_id")
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  assets  Asset[]
+  models  Model3D[]
+
+  @@index([tenantId])
+  @@map("digital_twins")
+}
+
+model Asset {
+  id   String    @id @default(uuid())
+  name String
+  type AssetType
+
+  twinId String      @map("twin_id")
+  twin   DigitalTwin @relation(fields: [twinId], references: [id], onDelete: Cascade)
+
+  parentId String? @map("parent_id")
+  parent   Asset?  @relation("AssetHierarchy", fields: [parentId], references: [id])
+  children Asset[] @relation("AssetHierarchy")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  sensors Sensor[]
+
+  @@index([twinId])
+  @@index([parentId])
+  @@map("assets")
+}
+
+// ──────────────────────────────────────
+// 3D Models
+// ──────────────────────────────────────
+
+model Model3D {
+  id      String @id @default(uuid())
+  fileUrl String @map("file_url")
+  format  String
+  sizeBytes Int?   @map("size_bytes")
+
+  meshStructure Json? @map("mesh_structure")
+
+  twinId String      @map("twin_id")
+  twin   DigitalTwin @relation(fields: [twinId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  modelParts ModelPart[]
+
+  @@index([twinId])
+  @@map("models_3d")
+}
+
+model ModelPart {
+  id   String @id @default(uuid())
+  name String
+
+  modelId String  @map("model_id")
+  model   Model3D @relation(fields: [modelId], references: [id], onDelete: Cascade)
+
+  metadata Json?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  sensors Sensor[]
+
+  @@index([modelId])
+  @@map("model_parts")
+}
+
+// ──────────────────────────────────────
+// Sensors
+// ──────────────────────────────────────
+
+model Sensor {
+  id   String @id @default(uuid())
+  name String
+  type String
+  unit String
+
+  mode        SensorMode @default(REAL)
+  manualValue Float?     @map("manual_value")
+
+  streamPattern  StreamPattern? @map("stream_pattern")
+  streamInterval Int?           @map("stream_interval_ms")
+  streamMin      Float?         @map("stream_min")
+  streamMax      Float?         @map("stream_max")
+  streamActive   Boolean        @default(false) @map("stream_active")
+
+  alertMinThreshold Float? @map("alert_min_threshold")
+  alertMaxThreshold Float? @map("alert_max_threshold")
+
+  modelPartId String?    @map("model_part_id")
+  modelPart   ModelPart? @relation(fields: [modelPartId], references: [id])
+
+  assetId String? @map("asset_id")
+  asset   Asset?  @relation(fields: [assetId], references: [id])
+
+  tenantId String @map("tenant_id")
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  alerts Alert[]
+
+  @@index([tenantId])
+  @@index([modelPartId])
+  @@index([assetId])
+  @@map("sensors")
+}
+
+// ──────────────────────────────────────
+// Alerts
+// ──────────────────────────────────────
+
+enum AlertSeverity {
+  WARNING
+  CRITICAL
+}
+
+model Alert {
+  id       String        @id @default(uuid())
+  severity AlertSeverity
+  message  String
+  value    Float
+
+  acknowledged Boolean @default(false)
+
+  sensorId String @map("sensor_id")
+  sensor   Sensor @relation(fields: [sensorId], references: [id], onDelete: Cascade)
+
+  tenantId String @map("tenant_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([sensorId])
+  @@index([tenantId])
+  @@index([createdAt])
+  @@index([severity])
+  @@map("alerts")
+}
+
+// ──────────────────────────────────────
+// Audit Log
+// ──────────────────────────────────────
+
+model AuditLog {
+  id     String @id @default(uuid())
+  action String
+  entity String
+  entityId String? @map("entity_id")
+  details Json?
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
+
+  tenantId String @map("tenant_id")
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

@@ -47,20 +47,48 @@ export interface Asset {
 }
 
 // ─── 3D Model ────────────────────────────────────────────
+export type ModelFormat = 'GLTF' | 'GLB' | 'OBJ' | 'FBX';
+
 export interface Model3D {
   id: string;
   name: string;
+  description?: string;
   fileUrl: string;
-  format: string;
+  format: ModelFormat;
+  sizeBytes?: number;
+  meshStructure?: string[];
   twinId: string;
+  tenantId: string;
+  twin?: { id: string; name: string };
   parts?: ModelPart[];
+  modelParts?: ModelPart[];
+  // Versioning (v0.4.0)
+  version: number;
+  isLatest: boolean;
+  parentModelId?: string;
+  parentModel?: { id: string; version: number; name: string };
+  childVersions?: { id: string; version: number; createdAt: string; isLatest: boolean }[];
+  // Soft delete (v0.4.0)
+  deletedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ModelVersion {
+  id: string;
+  version: number;
+  name: string;
+  isLatest: boolean;
+  createdAt: string;
+  fileUrl: string;
+  sizeBytes?: number;
 }
 
 export interface ModelPart {
   id: string;
   name: string;
-  meshName: string;
   modelId: string;
+  metadata?: Record<string, unknown>;
   sensors?: Sensor[];
 }
 
@@ -114,7 +142,7 @@ export interface AggregatedPoint {
 }
 
 // ─── Alerts ─────────────────────────────────────────────
-export type AlertSeverity = 'WARNING' | 'CRITICAL';
+export type AlertSeverity = 'INFO' | 'WARNING' | 'CRITICAL';
 
 export interface AlertEvent {
   id: string;
@@ -137,4 +165,30 @@ export interface StartStreamConfig {
   interval_ms: number;
   min: number;
   max: number;
+}
+
+// ─── Collaboration (v0.4.0) ─────────────────────────────
+export interface CollaborationUser {
+  userId: string;
+  userName: string;
+  joinedAt: number;
+}
+
+export interface CollaborationSelection {
+  userId: string;
+  userName: string;
+  meshName: string | null;
+  modelPartId: string | null;
+}
+
+// ─── Anomaly (v0.4.0) ──────────────────────────────────
+export interface AnomalyResult {
+  sensorId: string;
+  anomalyScore: number;
+  isAnomaly: boolean;
+  reason: string;
+  currentValue: number;
+  mean: number;
+  stdDev: number;
+  zScore: number;
 }

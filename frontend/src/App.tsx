@@ -12,6 +12,7 @@ const ViewerPage = lazy(() => import('@/pages/viewer/ViewerPage'));
 const SensorsPage = lazy(() => import('@/pages/sensors/SensorsPage'));
 const SensorTestingPage = lazy(() => import('@/pages/sensors/SensorTestingPage'));
 const AlertsPage = lazy(() => import('@/pages/alerts/AlertsPage'));
+const ModelsPage = lazy(() => import('@/pages/models/ModelsPage'));
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
@@ -40,6 +41,7 @@ export default function App() {
                 <Route path="/sensors" element={<SensorsPage />} />
                 <Route path="/sensor-testing" element={<SensorTestingPage />} />
                 <Route path="/alerts" element={<AlertsPage />} />
+                <Route path="/models" element={<ModelsPage />} />
               </Route>
             </Routes>
           </Suspense>

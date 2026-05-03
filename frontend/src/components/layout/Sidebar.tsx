@@ -7,6 +7,7 @@ import {
   Activity,
   FlaskConical,
   Bell,
+  FileBox,
   LogOut,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
@@ -14,6 +15,7 @@ import { useAuthStore } from '@/store/authStore';
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/twins', label: 'Digital Twins', icon: Box },
+  { to: '/models', label: '3D Models', icon: FileBox },
   { to: '/viewer', label: '3D Viewer', icon: Eye },
   { to: '/sensors', label: 'Sensors', icon: Activity },
   { to: '/sensor-testing', label: 'Testing Panel', icon: FlaskConical },

@@ -39,6 +39,13 @@ enum StreamPattern {
   RANDOM
 }
 
+enum ModelFormat {
+  GLTF
+  GLB
+  OBJ
+  FBX
+}
+
 // ──────────────────────────────────────
 // Multi-Tenant
 // ──────────────────────────────────────
@@ -132,15 +139,29 @@ model Asset {
 // ──────────────────────────────────────
 
 model Model3D {
-  id      String @id @default(uuid())
-  fileUrl String @map("file_url")
-  format  String
-  sizeBytes Int?   @map("size_bytes")
+  id          String      @id @default(uuid())
+  name        String      @default("Untitled Model")
+  description String?     @default("")
+  fileUrl     String      @map("file_url")
+  format      ModelFormat @default(GLB)
+  sizeBytes   Int?        @map("size_bytes")
 
   meshStructure Json? @map("mesh_structure")
 
+  // Versioning (v0.4.0)
+  version       Int      @default(1)
+  isLatest      Boolean  @default(true) @map("is_latest")
+  parentModelId String?  @map("parent_model_id")
+  parentModel   Model3D? @relation("ModelVersions", fields: [parentModelId], references: [id])
+  childVersions Model3D[] @relation("ModelVersions")
+
+  // Soft delete (v0.4.0)
+  deletedAt DateTime? @map("deleted_at")
+
   twinId String      @map("twin_id")
   twin   DigitalTwin @relation(fields: [twinId], references: [id], onDelete: Cascade)
+
+  tenantId String @map("tenant_id")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -148,6 +169,8 @@ model Model3D {
   modelParts ModelPart[]
 
   @@index([twinId])
+  @@index([tenantId, twinId])
+  @@index([parentModelId])
   @@map("models_3d")
 }
 
@@ -191,6 +214,13 @@ model Sensor {
   alertMinThreshold Float? @map("alert_min_threshold")
   alertMaxThreshold Float? @map("alert_max_threshold")
 
+  // Advanced alerts (v0.4.0)
+  alertCooldownMs  Int?    @map("alert_cooldown_ms")
+  alertHysteresis  Float?  @map("alert_hysteresis")
+
+  // Device validation (v0.4.0)
+  validationSchema Json?   @map("validation_schema")
+
   modelPartId String?    @map("model_part_id")
   modelPart   ModelPart? @relation(fields: [modelPartId], references: [id])
 
@@ -216,6 +246,7 @@ model Sensor {
 // ──────────────────────────────────────
 
 enum AlertSeverity {
+  INFO
   WARNING
   CRITICAL
 }

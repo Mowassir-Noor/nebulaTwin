@@ -5,6 +5,8 @@ import type {
   Asset,
   Sensor,
   Alert,
+  Model3D,
+  ModelVersion,
   StartStreamConfig,
   TimeSeriesPoint,
   AggregatedPoint,
@@ -133,6 +135,55 @@ export const analyticsApi = {
     api.get<AggregatedPoint[]>(`/analytics/sensors/${sensorId}/aggregated`, {
       params: { from, to, interval },
     }),
+};
+
+// ─── Models ─────────────────────────────────────────────
+export const modelsApi = {
+  list: (twinId?: string, includeDeleted = false) =>
+    api.get<Model3D[]>('/models', { params: { ...(twinId ? { twinId } : {}), ...(includeDeleted ? { includeDeleted: 'true' } : {}) } }),
+  get: (id: string) => api.get<Model3D>(`/models/${id}`),
+  upload: (file: File, twinId: string, name?: string, description?: string) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('twinId', twinId);
+    if (name) formData.append('name', name);
+    if (description) formData.append('description', description);
+    return api.post<Model3D>('/models', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  uploadVersion: (parentModelId: string, file: File, name?: string, description?: string) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (name) formData.append('name', name);
+    if (description) formData.append('description', description);
+    return api.post<Model3D>(`/models/${parentModelId}/version`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  update: (id: string, data: { name?: string; description?: string }) =>
+    api.patch<Model3D>(`/models/${id}`, data),
+  delete: (id: string) => api.delete(`/models/${id}`),
+  restore: (id: string) => api.post<Model3D>(`/models/${id}/restore`),
+  permanentDelete: (id: string) => api.delete(`/models/${id}/permanent`),
+  versions: (id: string) => api.get<ModelVersion[]>(`/models/${id}/versions`),
+  rollback: (id: string) => api.post<Model3D>(`/models/${id}/rollback`),
+  boundSensors: (id: string) =>
+    api.get<{ count: number }>(`/models/${id}/bound-sensors`),
+};
+
+// ─── Export & Sharing ───────────────────────────────────
+export const exportApi = {
+  sensorCsv: (sensorId: string, from: string, to: string) =>
+    api.get(`/export/sensors/${sensorId}/csv`, { params: { from, to }, responseType: 'blob' }),
+  twinJson: (twinId: string) =>
+    api.get(`/export/twins/${twinId}/json`),
+  createShareLink: (twinId: string) =>
+    api.post<{ token: string; url: string }>(`/export/twins/${twinId}/share`),
+  getShared: (token: string) =>
+    api.get(`/export/shared/${token}`),
+  revokeShare: (token: string) =>
+    api.delete(`/export/shared/${token}`),
 };
 
 // ─── Alerts ─────────────────────────────────────────────

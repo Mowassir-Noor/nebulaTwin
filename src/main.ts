@@ -2,12 +2,14 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
+import * as path from 'path';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const configService = app.get(ConfigService);
 
   // Security
@@ -44,9 +46,14 @@ async function bootstrap() {
     .addTag('sensors', 'Sensor management & control')
     .addTag('ingestion', 'Data ingestion endpoints')
     .addTag('analytics', 'Analytics & time-series queries')
+    .addTag('models', '3D model management')
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('docs', app, document);
+
+  // Static file serving for uploads
+  const uploadDir = configService.get<string>('UPLOAD_DIR', './uploads');
+  app.useStaticAssets(path.resolve(uploadDir), { prefix: '/uploads' });
 
   const port = configService.get<number>('PORT', 3000);
   await app.listen(port);

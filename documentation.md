@@ -1,7 +1,7 @@
 # NebulaTwin Pro — Complete Documentation
 
 **Cloud-Based Digital Twin SaaS Platform**
-Version: 0.2.0 (Hardened) | Last Updated: May 2026
+Version: 0.4.0 (Intelligence, Collaboration & Safety) | Last Updated: May 2026
 
 ---
 
@@ -22,6 +22,9 @@ Version: 0.2.0 (Hardened) | Last Updated: May 2026
    - 5.8 [Analytics](#58-analytics)
    - 5.9 [Alert System](#59-alert-system)
    - 5.10 [Health & Observability](#510-health--observability)
+   - 5.11 [3D Model Management](#511-3d-model-management)
+   - 5.12 [AI Anomaly Detection](#512-ai-anomaly-detection)
+   - 5.13 [Device Validation Layer](#513-device-validation-layer)
 6. [Frontend (React)](#6-frontend-react)
    - 6.1 [Pages](#61-pages)
    - 6.2 [Components](#62-components)
@@ -38,7 +41,9 @@ Version: 0.2.0 (Hardened) | Last Updated: May 2026
 12. [Security](#12-security)
 13. [Production Hardening (v0.2.0)](#13-production-hardening-v020)
 14. [Testing](#14-testing)
-15. [Troubleshooting](#15-troubleshooting)
+15. [3D Model Management (v0.3.0)](#15-3d-model-management-v030)
+16. [v0.4.0 — Intelligence, Collaboration & Safety](#16-v040--intelligence-collaboration--safety)
+17. [Troubleshooting](#17-troubleshooting)
 
 ---
 
@@ -47,13 +52,17 @@ Version: 0.2.0 (Hardened) | Last Updated: May 2026
 **NebulaTwin Pro** is a full-stack, cloud-based Digital Twin SaaS platform. It allows industrial users to:
 
 - Create and manage **digital twins** of physical assets (factories, production lines, machines, components)
-- Upload and interact with **3D models** in the browser
-- Attach **sensors** to machine parts and receive real-time telemetry
+- Upload and interact with **3D models** in the browser, with **versioning and rollback** **(v0.4.0)**
+- Attach **sensors** to machine parts via click-to-bind or **drag-and-drop** onto 3D meshes **(v0.4.0)**
 - **Simulate sensor data** with configurable patterns (sine, random, linear, constant)
 - **Manually override** sensor values for testing
-- Receive **real-time alerts** when sensor values breach configurable thresholds
+- Receive **real-time alerts** when sensor values breach configurable thresholds, with **cooldown and hysteresis** **(v0.4.0)**
+- **AI anomaly detection** — automatic statistical anomaly scoring on every data point **(v0.4.0)**
 - Visualize data in **real-time dashboards** with charts and 3D color-coded models
-- Ingest sensor data via **HTTP** and **MQTT** protocols
+- **Playback sensor history** through the 3D viewer with time-range selection **(v0.4.0)**
+- **Real-time collaboration** — see who's editing, broadcast mesh selection **(v0.4.0)**
+- **Export & share** — download sensor CSV/JSON, create time-limited public share links **(v0.4.0)**
+- Ingest sensor data via **HTTP** and **MQTT** protocols, with **per-sensor schema validation** **(v0.4.0)**
 - Query **time-series analytics** (history, latest, aggregated buckets)
 
 The platform is **multi-tenant**, supports **RBAC** (Role-Based Access Control), and is designed for horizontal scalability.
@@ -77,9 +86,9 @@ The platform is **multi-tenant**, supports **RBAC** (Role-Based Access Control),
 │  ┌─────────┐ ┌─────────┐ ┌──────────┐ ┌──────────┐ ┌────────┐│
 │  │  Users  │ │ Assets  │ │ Realtime │ │ Tenants  │ │ Alerts ││
 │  └─────────┘ └─────────┘ └──────────┘ └──────────┘ └────────┘│
-│  ┌─────────┐                                                  │
-│  │ Health  │                                                  │
-│  └─────────┘                                                  │
+│  ┌─────────┐ ┌─────────┐ ┌──────────┐ ┌──────────┐           │
+│  │ Health  │ │ Models  │ │ Anomaly  │ │ Export   │           │
+│  └─────────┘ └─────────┘ └──────────┘ └──────────┘           │
 └──────┬──────────┬──────────┬──────────┬────────────────────────┘
        │          │          │          │
   ┌────▼───┐ ┌───▼───┐ ┌───▼───┐ ┌───▼────┐
@@ -93,9 +102,12 @@ The platform is **multi-tenant**, supports **RBAC** (Role-Based Access Control),
 │  ┌──────────┐ ┌───────┐ ┌──────────┐ ┌─────────┐ ┌──────────┐ │
 │  │Dashboard │ │ Twins │ │3D Viewer │ │ Sensors │ │ Testing  │ │
 │  └──────────┘ └───────┘ └──────────┘ └─────────┘ └──────────┘ │
-│  ┌──────────┐ ┌──────────────┐ ┌─────────────┐                │
-│  │  Alerts  │ │ErrorBoundary │ │Toast System │                │
-│  └──────────┘ └──────────────┘ └─────────────┘                │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────────┐  │
+│  │  Alerts  │ │ 3D Models│ │ Playback │ │  Collaboration   │  │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────────────┘  │
+│  ┌──────────────┐ ┌─────────────┐ ┌────────────────────────┐  │
+│  │ErrorBoundary │ │Toast System │ │ Drag & Drop Binding    │  │
+│  └──────────────┘ └─────────────┘ └────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -244,15 +256,32 @@ src/
     │   ├── ingestion.service.ts       # Validate & store data points
     │   └── mqtt-ingestion.service.ts  # MQTT subscriber → ingestion pipeline
     │
-    ├── realtime/                 # WebSocket real-time gateway
+    ├── realtime/                 # WebSocket real-time gateway + collaboration (v0.4.0)
     │   ├── realtime.module.ts
-    │   ├── realtime.gateway.ts   # Socket.IO gateway (subscribe/broadcast)
+    │   ├── realtime.gateway.ts   # Socket.IO gateway (subscribe/broadcast + collaboration presence/selection)
     │   └── realtime.service.ts   # Redis pub/sub → WebSocket bridge
     │
-    └── analytics/                # Time-series analytics
-        ├── analytics.module.ts
-        ├── analytics.controller.ts    # History, latest, aggregated endpoints
-        └── analytics.service.ts       # TimescaleDB queries with Redis caching
+    ├── analytics/                # Time-series analytics
+    │   ├── analytics.module.ts
+    │   ├── analytics.controller.ts    # History, latest, aggregated endpoints
+    │   └── analytics.service.ts       # TimescaleDB queries with Redis caching
+    │
+    ├── models/                   # 3D Model management (v0.3.0, versioning+soft-delete v0.4.0)
+    │   ├── models.module.ts           # Module with Multer file upload config
+    │   ├── models.controller.ts       # Upload, CRUD, versioning, rollback, soft delete, restore
+    │   ├── models.service.ts          # File storage, mesh parsing, versioning, soft delete
+    │   └── dto/
+    │       ├── create-model.dto.ts    # { twinId, name?, description? }
+    │       └── update-model.dto.ts    # { name?, description? }
+    │
+    ├── anomaly/                  # AI Anomaly Detection (v0.4.0)
+    │   ├── anomaly.module.ts          # Exports AnomalyDetectionService
+    │   └── anomaly-detection.service.ts # Rolling z-score + spike detection
+    │
+    └── export/                   # Export & Sharing (v0.4.0)
+        ├── export.module.ts           # ExportModule
+        ├── export.controller.ts       # CSV/JSON export, share links, public access
+        └── export.service.ts          # Data export + token-based share link management
 ```
 
 ### Frontend (`frontend/src/`)
@@ -269,26 +298,42 @@ frontend/src/
 │   ├── api.ts                    # Axios client + all API functions
 │   └── websocket.ts              # Socket.IO client + event subscription
 │
+├── utils/
+│   ├── cn.ts                     # Tailwind class merge utility
+│   └── rbac.ts                   # useRole() hook for frontend RBAC (v0.3.0)
+│
 ├── store/
 │   ├── authStore.ts              # Auth state (login, logout, tokens)
 │   ├── twinStore.ts              # Twins + assets state
 │   ├── sensorStore.ts            # Sensors + realtime values state
-│   └── viewerStore.ts            # 3D viewer selection state
+│   └── viewerStore.ts            # 3D viewer selection state (extended v0.3.0)
 │
 ├── components/
 │   ├── ui/
 │   │   ├── Button.tsx            # Styled button (variants: primary/secondary/outline/ghost/destructive)
 │   │   ├── Card.tsx              # Card + CardHeader + CardTitle + CardContent
 │   │   ├── Input.tsx             # Styled input field
-│   │   └── Badge.tsx             # Status badge (default/success/warning/danger)
+│   │   ├── Badge.tsx             # Status badge (default/success/warning/danger)
+│   │   ├── ConfirmDialog.tsx     # Reusable destructive action confirmation modal (v0.3.0)
+│   │   ├── Skeleton.tsx          # Loading skeletons: Skeleton, CardSkeleton, TableSkeleton, ListSkeleton (v0.4.0)
+│   │   └── EmptyState.tsx        # Empty state with icon, title, description, optional action (v0.4.0)
+│   │
 │   ├── layout/
 │   │   ├── AppLayout.tsx         # Protected layout with sidebar + outlet
 │   │   └── Sidebar.tsx           # Navigation sidebar with icons
 │   ├── 3d/
-│   │   ├── SceneViewer.tsx       # Three.js canvas with lighting + controls
-│   │   └── DemoFactory.tsx       # Interactive 3D factory model
-│   └── sensors/
-│       └── SensorBindingPanel.tsx # Attach sensor to selected mesh
+│   │   ├── SceneViewer.tsx       # Three.js canvas + SceneDragDrop wrapper + SceneCapture (updated v0.4.0)
+│   │   ├── DemoFactory.tsx       # Interactive 3D factory model
+│   │   ├── UploadedModel.tsx     # Dynamic 3D model loader (GLTFLoader/OBJLoader) (v0.3.0)
+│   │   └── SensorDragOverlay.tsx # SceneDragDrop (raycast drop zone) + DraggableSensorChip (v0.4.0)
+│   ├── sensors/
+│   │   └── SensorBindingPanel.tsx # Bind/unbind/drag sensors to model parts (updated v0.4.0)
+│   ├── models/
+│   │   └── VersionSelector.tsx   # Model version history dropdown + rollback (v0.4.0)
+│   ├── playback/
+│   │   └── PlaybackControls.tsx  # Sensor history playback with time range + speed control (v0.4.0)
+│   └── collaboration/
+│       └── PresenceIndicator.tsx # Active collaborator avatars (v0.4.0)
 │
 └── pages/
     ├── auth/
@@ -296,11 +341,15 @@ frontend/src/
     ├── dashboard/
     │   └── DashboardPage.tsx     # KPI cards + charts + alerts + live values
     ├── twins/
-    │   └── TwinsPage.tsx         # Twin list + create form + asset tree
+    │   └── TwinsPage.tsx         # Twin list + create/edit/delete + asset tree (updated v0.3.0)
     ├── viewer/
-    │   └── ViewerPage.tsx        # 3D viewer + sensor binding panel
+    │   └── ViewerPage.tsx        # 3D viewer + version selector + playback + collaboration + drag-drop (updated v0.4.0)
+    ├── models/
+    │   └── ModelsPage.tsx        # Upload, versioning, soft delete, restore, version selector (updated v0.4.0)
+    ├── alerts/
+    │   └── AlertsPage.tsx        # Alert list with INFO/WARNING/CRITICAL badges, improved empty state (updated v0.4.0)
     └── sensors/
-        ├── SensorsPage.tsx       # Sensor grid with live values
+        ├── SensorsPage.tsx       # Sensor grid + create/edit/delete (updated v0.3.0)
         └── SensorTestingPage.tsx # Full sensor control panel
 ```
 
@@ -321,12 +370,15 @@ frontend/src/
 | `TenantsModule` | Tenant CRUD for multi-tenancy |
 | `TwinsModule` | Digital twin CRUD with nested asset/model includes |
 | `AssetsModule` | Hierarchical asset CRUD (factory → line → machine → component) |
-| `SensorsModule` | Sensor CRUD, manual override, stream simulation, model binding |
+| `SensorsModule` | Sensor CRUD, manual override, stream simulation, model binding, anomaly detection integration, device validation **(updated v0.4.0)** |
 | `IngestionModule` | HTTP + MQTT data ingestion into TimescaleDB, rate limiting, metrics |
-| `RealtimeModule` | Socket.IO WebSocket gateway with throttled broadcast (10 updates/sec per room) |
+| `RealtimeModule` | Socket.IO WebSocket gateway with throttled broadcast + collaboration presence/selection **(updated v0.4.0)** |
 | `AnalyticsModule` | Time-series queries (history, latest, aggregated with time_bucket) |
 | `AlertsModule` | Alert CRUD, acknowledgment, threshold-based alert creation |
 | `HealthModule` | Health check endpoints (`/health`, `/health/live`, `/health/ready`) |
+| `ModelsModule` | 3D model upload, CRUD, mesh parsing, versioning, rollback, soft delete, restore **(updated v0.4.0)** |
+| `AnomalyModule` | AI anomaly detection — rolling z-score + spike analysis, injectable into SensorsModule **(v0.4.0)** |
+| `ExportModule` | CSV/JSON data export, token-based public share links **(v0.4.0)** |
 
 ### 5.2 Database Schema
 
@@ -340,9 +392,9 @@ frontend/src/
 | `users` | User accounts | id, email, passwordHash, googleId, role, tenantId |
 | `digital_twins` | Digital twin definitions | id, name, description, tenantId |
 | `assets` | Hierarchical asset tree | id, name, type (FACTORY/LINE/MACHINE/COMPONENT), twinId, parentId |
-| `models_3d` | 3D model files | id, fileUrl, format, sizeBytes, meshStructure, twinId |
+| `models_3d` | 3D model files | id, name, description, fileUrl, format (ModelFormat enum), sizeBytes, meshStructure, twinId, **tenantId**, **version**, **isLatest**, **parentModelId**, **deletedAt** **(v0.4.0)** |
 | `model_parts` | Individual mesh parts of 3D models | id, name, modelId, metadata |
-| `sensors` | Sensor definitions + control state | id, name, type, unit, mode, manualValue, stream*, assetId, modelPartId, tenantId |
+| `sensors` | Sensor definitions + control state | id, name, type, unit, mode, manualValue, stream*, assetId, modelPartId, tenantId, **alertCooldownMs**, **alertHysteresis**, **validationSchema** **(v0.4.0)** |
 | `audit_logs` | Activity audit trail | id, action, entity, entityId, details, userId, tenantId |
 
 #### TimescaleDB Hypertable (raw SQL)
@@ -363,14 +415,15 @@ frontend/src/
 | `SensorMode` | REAL, MANUAL, **STREAM** |
 | `AssetType` | FACTORY, LINE, MACHINE, COMPONENT |
 | `StreamPattern` | CONSTANT, LINEAR_INCREASE, LINEAR_DECREASE, SINE, RANDOM |
-| `AlertSeverity` | WARNING, CRITICAL |
+| `ModelFormat` | GLTF, GLB, OBJ, FBX **(v0.3.0)** |
+| `AlertSeverity` | **INFO** **(v0.4.0)**, WARNING, CRITICAL |
 
 #### Alert Model (new in v0.2.0)
 
 | Field | Type | Description |
 |---|---|---|
 | `id` | UUID | Primary key |
-| `severity` | AlertSeverity | WARNING or CRITICAL |
+| `severity` | AlertSeverity | INFO, WARNING, or CRITICAL |
 | `message` | String | Human-readable alert description |
 | `value` | Float | The sensor value that triggered the alert |
 | `acknowledged` | Boolean | Whether the alert has been acknowledged |
@@ -384,6 +437,23 @@ frontend/src/
 |---|---|---|
 | `alertMinThreshold` | Float? | Minimum threshold — values below trigger alert |
 | `alertMaxThreshold` | Float? | Maximum threshold — values above trigger alert |
+
+#### Sensor Advanced Fields (new in v0.4.0)
+
+| Field | Type | Description |
+|---|---|---|
+| `alertCooldownMs` | Int? | Minimum milliseconds between alerts for this sensor (default 30000) |
+| `alertHysteresis` | Float? | Value must exceed threshold by this amount before triggering |
+| `validationSchema` | Json? | Per-sensor payload validation: `{ minValue?, maxValue?, valueType?, requiredMetadata? }` |
+
+#### Model Versioning Fields (new in v0.4.0)
+
+| Field | Type | Description |
+|---|---|---|
+| `version` | Int | Version number (starts at 1, auto-increments) |
+| `isLatest` | Boolean | Whether this is the latest version in the lineage |
+| `parentModelId` | String? | FK → Model3D, points to root model of this version chain |
+| `deletedAt` | DateTime? | Soft delete timestamp (null = active, non-null = deleted) |
 
 ### 5.3 API Endpoints
 
@@ -477,6 +547,52 @@ Base URL: `/api/v1`
 }
 ```
 
+#### 3D Models (v0.3.0, updated v0.4.0)
+| Method | Path | Auth | Roles | Description |
+|---|---|---|---|---|
+| POST | `/models` | JWT | ADMIN, MANAGER | Upload 3D model file (multipart/form-data) |
+| GET | `/models` | JWT | Any | List models (filter by `?twinId=`, `?includeDeleted=true`) **(v0.4.0)** |
+| GET | `/models/:id` | JWT | Any | Get model with parts and sensors |
+| PATCH | `/models/:id` | JWT | ADMIN, MANAGER | Update model name/description |
+| DELETE | `/models/:id` | JWT | ADMIN, MANAGER | **Soft delete** model (sets `deletedAt`) **(v0.4.0)** |
+| GET | `/models/:id/bound-sensors` | JWT | Any | Count sensors bound to model parts |
+| POST | `/models/:id/version` | JWT | ADMIN, MANAGER | Upload new version of model (multipart/form-data) **(v0.4.0)** |
+| GET | `/models/:id/versions` | JWT | Any | Get version history for model lineage **(v0.4.0)** |
+| POST | `/models/:id/rollback` | JWT | ADMIN, MANAGER | Rollback — promote this version to latest **(v0.4.0)** |
+| POST | `/models/:id/restore` | JWT | ADMIN, MANAGER | Restore soft-deleted model **(v0.4.0)** |
+| DELETE | `/models/:id/permanent` | JWT | ADMIN | Permanently delete model and file **(v0.4.0)** |
+
+**Upload Request (multipart/form-data):**
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `file` | File | Yes | 3D model file (.glb, .gltf, .obj, .fbx) |
+| `twinId` | String | Yes | Digital twin to associate with |
+| `name` | String | No | Model name (defaults to filename) |
+| `description` | String | No | Model description |
+
+**Upload Response:**
+```json
+{
+  "id": "uuid",
+  "name": "Factory Floor",
+  "fileUrl": "/uploads/models/uuid.glb",
+  "format": "GLB",
+  "sizeBytes": 5242880,
+  "twinId": "twin-uuid",
+  "tenantId": "tenant-uuid",
+  "modelParts": [
+    { "id": "part-uuid", "name": "Motor_Housing", "modelId": "uuid" },
+    { "id": "part-uuid", "name": "Conveyor_Belt", "modelId": "uuid" }
+  ]
+}
+```
+
+**File validation:** Allowed extensions: `.glb`, `.gltf`, `.obj`, `.fbx`. Max size: 100MB (configurable via `MAX_FILE_SIZE`).
+
+**Mesh parsing:** On upload, GLTF/GLB files are parsed to extract mesh names. Each unique mesh becomes a `ModelPart` with a UUID, enabling sensor binding by `modelPartId`.
+
+**Cascade delete:** Deleting a model unbinds all sensors from its parts, removes the file from disk, and deletes the model + parts from the database.
+
 #### Ingestion
 | Method | Path | Auth | Description |
 |---|---|---|---|
@@ -569,6 +685,24 @@ Base URL: `/api/v1`
 - Payload: `{ "value": 23.5, "metadata": {} }`
 - The `MqttIngestionService` subscribes to `sensors/+/data` and routes messages to the ingestion pipeline
 
+#### Export & Sharing (new in v0.4.0)
+| Method | Path | Auth | Roles | Description |
+|---|---|---|---|---|
+| GET | `/export/sensors/:id/csv` | JWT | Any | Export sensor data as CSV (query: `?from=&to=`) |
+| GET | `/export/twins/:id/json` | JWT | Any | Export full twin config as JSON |
+| POST | `/export/twins/:id/share` | JWT | ADMIN, MANAGER | Create a time-limited public share link |
+| GET | `/export/shared/:token` | No | — | Access shared twin by token (public, read-only) |
+| DELETE | `/export/shared/:token` | JWT | ADMIN, MANAGER | Revoke a share link |
+
+**Share Link Response:**
+```json
+{
+  "token": "abc123...",
+  "url": "/api/v1/export/shared/abc123...",
+  "expiresAt": "2026-05-07T00:00:00.000Z"
+}
+```
+
 ### 5.4 Authentication & Authorization
 
 **JWT Authentication:**
@@ -611,18 +745,27 @@ Sensor Data → TimescaleDB INSERT
 | `subscribe:twin` | `{ twinId }` | Join twin room |
 | `subscribe:sensor` | `{ sensorId }` | Join sensor room |
 | `unsubscribe` | `{ room }` | Leave a room |
+| `collaboration:join` | `{ twinId, user }` | Join collaboration room for a twin **(v0.4.0)** |
+| `collaboration:leave` | `{ twinId }` | Leave collaboration room **(v0.4.0)** |
+| `collaboration:select` | `{ twinId, meshName, userId }` | Broadcast mesh selection to peers **(v0.4.0)** |
+| `collaboration:sensor-edit` | `{ twinId, sensorId, changes, userId }` | Broadcast sensor edit (last-write-wins) **(v0.4.0)** |
 
 **Server Events (listen):**
 | Event | Payload | Description |
 |---|---|---|
 | `sensor:data` | `{ sensorId, tenantId, value, timestamp, mode, metadata }` | Real-time sensor reading |
 | `alert` | `{ id, severity, message, value, sensorId, tenantId, createdAt }` | Threshold alert (new in v0.2.0) |
+| `collaboration:presence` | `{ users: CollaborationUser[] }` | Updated list of users in the collaboration room **(v0.4.0)** |
+| `collaboration:selection` | `{ userId, meshName }` | Peer's mesh selection **(v0.4.0)** |
+| `collaboration:sensor-edited` | `{ userId, sensorId, changes }` | Peer's sensor edit **(v0.4.0)** |
 
 **Throttling (v0.2.0):** WebSocket broadcasts are throttled to max 10 updates/second per room. The latest event per room is buffered and flushed every 100ms, shedding intermediate updates under load.
 
 **Deduplication:** Redis subscriptions are created once per unique subscription key, preventing duplicate listeners when multiple clients subscribe to the same tenant/sensor.
 
 **Reconnection:** Subscriptions are tracked in `pendingSubscriptions` and re-emitted on reconnect.
+
+**Collaboration (v0.4.0):** The RealtimeGateway tracks active users per twin. On join, it emits the full presence list to all users in the room. On disconnect, it automatically cleans up presence. Selection and sensor-edit events are broadcast to all peers except the sender.
 
 ### 5.6 Sensor Streaming Engine
 
@@ -685,15 +828,23 @@ Analytics responses are cached in Redis with configurable TTL.
 
 ### 5.9 Alert System
 
-**New in v0.2.0.** The alert system monitors sensor data against configurable thresholds.
+**New in v0.2.0, enhanced in v0.4.0.** The alert system monitors sensor data against configurable thresholds and AI anomaly detection.
 
 **How it works:**
 1. Each sensor can have `alertMinThreshold` and `alertMaxThreshold` fields (nullable)
 2. On every data ingestion (including stream ticks), the value is checked against thresholds
-3. If value exceeds max or falls below min, a `WARNING` alert is created in the database
-4. The alert is published to Redis channel `alert:{tenantId}`
-5. `RealtimeService` picks up the Redis message and broadcasts via WebSocket `alert` event
-6. Frontend toast notification and AlertsPage update in real-time
+3. **Hysteresis (v0.4.0):** Value must exceed threshold by `alertHysteresis` amount before triggering
+4. **Cooldown (v0.4.0):** Alerts are suppressed for `alertCooldownMs` milliseconds after the last alert for the same sensor (default 30s)
+5. If threshold is breached (after hysteresis), a `WARNING` or `CRITICAL` alert is created
+6. The alert is published to Redis channel `alert:{tenantId}`
+7. `RealtimeService` picks up the Redis message and broadcasts via WebSocket `alert` event
+8. Frontend toast notification and AlertsPage update in real-time
+
+**Anomaly Detection Alerts (v0.4.0):**
+1. Every ingested data point is also analyzed by `AnomalyDetectionService`
+2. Rolling statistical model calculates z-score and spike detection → anomaly score (0–100)
+3. If anomaly detected: score < 80 → `INFO` alert, score ≥ 80 → `WARNING` alert
+4. Anomaly alerts have a separate 60-second cooldown per sensor
 
 **Alert acknowledgment:** Alerts can be acknowledged individually or in bulk. Only `ADMIN` and `MANAGER` can acknowledge all.
 
@@ -709,6 +860,91 @@ Analytics responses are cached in Redis with configurable TTL.
 
 These endpoints are **unauthenticated** for use by container orchestrators.
 
+### 5.11 3D Model Management
+
+**New in v0.3.0, enhanced in v0.4.0.** The models module provides full lifecycle management for 3D assets including versioning and soft delete.
+
+**Upload Pipeline:**
+```
+User uploads .glb file via POST /models (multipart/form-data)
+  → ModelsController validates file type and size
+  → ModelsService.uploadModel()
+    → Validates twin belongs to tenant
+    → Saves file to ./uploads/models/{uuid}.{ext}
+    → Parses GLTF/GLB to extract mesh names
+    → Creates Model3D + ModelPart records in transaction
+    → Returns model with parts (each part has UUID for binding)
+```
+
+**Supported Formats:**
+| Format | Extension | Mesh Parsing |
+|---|---|---|
+| glTF Binary | `.glb` | Yes — extracts mesh names from binary JSON chunk |
+| glTF | `.gltf` | Yes — parses JSON to extract mesh node names |
+| Wavefront OBJ | `.obj` | No — creates single default part |
+| Autodesk FBX | `.fbx` | No — creates single default part |
+
+**File Storage:**
+- Default: local disk at `./uploads/models/`
+- CDN-ready: set `CDN_BASE_URL` env var to prefix all file URLs
+- Static file serving via `app.useStaticAssets()` at `/uploads`
+
+**Metadata Cache:**
+- In-memory cache with 60-second TTL for model list and detail queries
+- Automatically invalidated on upload, update, and delete operations
+
+**Sensor Binding by Model Part UUID:**
+- Each mesh in an uploaded model gets a `ModelPart` record with a UUID
+- Sensors bind to `modelPartId` (not mesh name), ensuring stable references
+- `bindToModelPart` validates that the model part belongs to the tenant
+- On model delete, all bound sensors are unbound before deletion
+
+**Database Indexes:**
+- `@@index([twinId])` — fast queries by twin
+- `@@index([tenantId, twinId])` — fast tenant-scoped queries
+
+**Model Versioning (v0.4.0):**
+- Each model has a `version` number (starts at 1) and `isLatest` flag
+- `uploadNewVersion(modelId, file)` creates a child record with `parentModelId` pointing to the root, increments version, and demotes the previous latest
+- `getVersionHistory(modelId)` returns all versions in the lineage ordered by version descending
+- `rollbackToVersion(modelId)` promotes the target version to `isLatest` and demotes all others
+- Version lineage is preserved — rollback doesn't delete, it re-promotes
+
+**Soft Delete (v0.4.0):**
+- `DELETE /models/:id` sets `deletedAt` instead of destroying the record
+- All list/get queries filter out deleted records by default
+- `?includeDeleted=true` query param to include soft-deleted records
+- `POST /models/:id/restore` clears `deletedAt` to restore
+- `DELETE /models/:id/permanent` (ADMIN only) truly deletes the record, file, and parts
+
+### 5.12 AI Anomaly Detection
+
+**New in v0.4.0.** The `AnomalyDetectionService` provides real-time statistical anomaly detection on sensor data.
+
+**Algorithm:**
+```
+For each sensor data point:
+  1. Add value to rolling window (last 100 values)
+  2. Calculate rolling mean and standard deviation
+  3. Z-score = |value - mean| / stddev  →  if > 3σ, flag as anomaly
+  4. Spike detection = |value - previousValue| / mean  →  if > 50%, flag as spike
+  5. Anomaly score = 0.6 * zScoreComponent + 0.4 * spikeComponent  (0–100)
+  6. If score > 50 → anomaly detected → create alert (INFO or WARNING based on score)
+```
+
+**Bootstrap:** `bootstrapSensor(sensorId)` loads the last 24 hours of historical data to pre-fill the rolling window, enabling immediate detection on the first new data point.
+
+**Integration:** Imported into `SensorsModule` and called automatically on every `recordData()` invocation.
+
+### 5.13 Device Validation Layer
+
+**New in v0.4.0.** Per-sensor schema validation for IoT device data.
+
+- Each sensor can have a `validationSchema` JSON field
+- Supported validation rules: `minValue`, `maxValue`, `valueType` (e.g. "integer"), `requiredMetadata` (array of keys)
+- `SensorsService.validatePayload()` is called before data ingestion
+- Invalid payloads are rejected with descriptive error messages
+
 ---
 
 ## 6. Frontend (React)
@@ -718,12 +954,13 @@ These endpoints are **unauthenticated** for use by container orchestrators.
 | Route | Page | Description |
 |---|---|---|
 | `/login` | `LoginPage` | Email/password login form + Google OAuth button. Pre-filled with demo credentials |
-| `/` | `DashboardPage` | KPI cards (twins, sensors, active streams, alerts), area chart, live sensor values, alert panel |
-| `/twins` | `TwinsPage` | Twin list with create form, asset hierarchy tree with type icons |
-| `/viewer` | `ViewerPage` | Interactive 3D factory model. Click mesh → sensor binding panel appears |
-| `/sensors` | `SensorsPage` | Grid of sensor cards with live values, mode badges, stream status |
+| `/` | `DashboardPage` | KPI cards (twins, sensors, active streams, **3D models**, alerts), area chart, live sensor values, alert panel |
+| `/twins` | `TwinsPage` | Twin list with create/**edit/delete** form, asset hierarchy tree with **edit/delete actions** **(updated v0.3.0)** |
+| `/viewer` | `ViewerPage` | 3D viewer with model selector, **version selector**, **playback controls**, **collaboration presence**, **drag-and-drop sensor binding** **(updated v0.4.0)** |
+| `/models` | `ModelsPage` | Upload, list, edit, **versioning**, **soft delete/restore**, **version selector**, **skeleton loading** **(updated v0.4.0)** |
+| `/sensors` | `SensorsPage` | Sensor grid with **create/edit/delete** actions, live values, bound status **(updated v0.3.0)** |
 | `/sensor-testing` | `SensorTestingPage` | **Core feature** — left: sensor tree, right: full control panel |
-| `/alerts` | `AlertsPage` | Alert list with filter (all/unacknowledged), acknowledge, stats **(v0.2.0)** |
+| `/alerts` | `AlertsPage` | Alert list with **INFO/WARNING/CRITICAL badges**, filter (all/unacknowledged), acknowledge, improved empty state **(updated v0.4.0)** |
 
 All pages except `/login` are **protected** — unauthenticated users are redirected to login.
 Pages are **lazy-loaded** via `React.lazy()` for performance.
@@ -737,14 +974,17 @@ Pages are **lazy-loaded** via `React.lazy()` for performance.
 - **Badge** — Status badges: default (blue), success (green), warning (yellow), danger (red)
 - **ErrorBoundary** — React error boundary with retry button and error message **(v0.2.0)**
 - **Toast** — Global toast notification system with success/error/warning/info types, auto-dismiss **(v0.2.0)**
+- **ConfirmDialog** — Reusable confirmation modal for destructive actions (delete twin/asset/sensor/model) with optional warning message **(v0.3.0)**
 - **ConnectionStatus** — WebSocket connection status indicator (connected/connecting/reconnecting/disconnected) **(v0.2.0)**
+- **Skeleton** — Animated loading placeholders: `Skeleton` (base), `CardSkeleton`, `TableSkeleton`, `ListSkeleton` **(v0.4.0)**
+- **EmptyState** — Empty data display with icon, title, description, and optional action button **(v0.4.0)**
 
 #### Layout (`components/layout/`)
 - **AppLayout** — Protected wrapper with sidebar + header (ConnectionStatus) + ErrorBoundary-wrapped content outlet **(updated v0.2.0)**
-- **Sidebar** — Navigation with Lucide icons: Dashboard, Digital Twins, 3D Viewer, Sensors, Testing Panel, Alerts, Logout **(updated v0.2.0)**
+- **Sidebar** — Navigation with Lucide icons: Dashboard, Digital Twins, 3D Viewer, **3D Models**, Sensors, Testing Panel, Alerts, Logout **(updated v0.3.0)**
 
 #### 3D Components (`components/3d/`)
-- **SceneViewer** — Three.js canvas with ambient/directional/point lighting, orbit controls, environment map, contact shadows
+- **SceneViewer** — Three.js canvas wrapped in `SceneDragDrop` for drag-and-drop binding. `SceneCapture` inner component exposes camera/scene/canvas refs for raycasting. Builds meshName→modelPartId map from active model **(updated v0.4.0)**
 - **DemoFactory** — Interactive 3D factory floor with:
   - **Motor unit** — clickable, bound to temperature sensor
   - **Conveyor belt** — clickable, bound to vibration sensor
@@ -754,8 +994,20 @@ Pages are **lazy-loaded** via `React.lazy()` for performance.
   - **Color coding:** green (normal, <60), yellow (warning, 60-80), red (critical, >80)
   - **Selection highlight:** purple glow when clicked
 
+- **UploadedModel** — Dynamic 3D model loader using GLTFLoader/OBJLoader. Auto-centers and scales models. Maps mesh names to ModelPart UUIDs. Color-codes meshes by sensor value (green/yellow/red). Highlights selected mesh **(v0.3.0)**
+- **SensorDragOverlay** — `SceneDragDrop`: HTML wrapper around canvas that handles dragOver/drop events; raycasts into the Three.js scene to find the mesh under cursor; highlights target mesh with blue emissive glow; on drop calls `sensorsApi.bind()`. `DraggableSensorChip`: draggable chip that puts `sensorId` into `dataTransfer` **(v0.4.0)**
+
 #### Sensor Components (`components/sensors/`)
-- **SensorBindingPanel** — Appears when a mesh is selected in the 3D viewer. Shows bound sensors with live values. Form to attach new sensor (name, type dropdown, unit input)
+- **SensorBindingPanel** — Appears when a mesh/part is selected. Shows bound sensors with live values and unbind button. Bind Existing Sensor dropdown. **Drag to 3D Model** section with `DraggableSensorChip` for each unbound sensor. Create & Bind form **(updated v0.4.0)**
+
+#### Model Components (`components/models/`)
+- **VersionSelector** — Dropdown showing version history for a model. Click a version to load it; rollback button to promote an older version to latest. Fetches from `modelsApi.getVersions()` **(v0.4.0)**
+
+#### Playback Components (`components/playback/`)
+- **PlaybackControls** — Sensor history playback toolbar: time-range selector (1h/6h/24h/7d), play/pause/skip buttons, speed control (0.5x–5x), progress bar with frame counter. Loads data from `analyticsApi.history()` **(v0.4.0)**
+
+#### Collaboration Components (`components/collaboration/`)
+- **PresenceIndicator** — Displays active collaborators as colored avatar circles with user initials. Current user is marked with a ring. Shows count badge if > 3 users **(v0.4.0)**
 
 ### 6.3 State Management
 
@@ -798,9 +1050,12 @@ Four **Zustand** stores:
 |---|---|---|
 | `selectedMeshName` | `string \| null` | Name of clicked mesh |
 | `selectedMeshId` | `string \| null` | Associated ID |
+| `selectedModelPartId` | `string \| null` | UUID of selected model part **(v0.3.0)** |
 | `hoveredMeshName` | `string \| null` | Currently hovered mesh |
-| `selectMesh()` | function | Set selected mesh |
+| `activeModelId` | `string \| null` | Currently loaded model ID **(v0.3.0)** |
+| `selectMesh()` | function | Set selected mesh (name, id, modelPartId) |
 | `clearSelection()` | function | Deselect |
+| `setActiveModel()` | function | Set active model for viewer **(v0.3.0)** |
 
 ### 6.4 Services
 
@@ -808,7 +1063,10 @@ Four **Zustand** stores:
 - Axios instance with base URL `/api/v1`
 - Request interceptor: attaches `Authorization: Bearer <token>` header
 - Response interceptor: on 401, clears tokens and redirects to `/login`
-- Organized into namespaces: `authApi`, `twinsApi`, `assetsApi`, `sensorsApi`, `ingestApi`, `analyticsApi`, `alertsApi`, `healthApi`
+- Organized into namespaces: `authApi`, `twinsApi`, `assetsApi`, `sensorsApi`, `ingestApi`, `analyticsApi`, `alertsApi`, `healthApi`, `modelsApi`, `exportApi` **(v0.4.0)**
+- **v0.3.0:** `modelsApi` — list, get, upload, update, delete, boundSensors
+- **v0.4.0:** `modelsApi` extended — `uploadVersion()`, `getVersions()`, `rollback()`, `restore()`, `permanentDelete()`
+- **v0.4.0:** `exportApi` — `sensorCsv()`, `twinJson()`, `createShareLink()`, `getShared()`, `revokeShare()`
 - **v0.2.0:** Automatic retry on 5xx errors for GET requests (1 retry, 1s delay)
 
 #### WebSocket Service (`services/websocket.ts`)
@@ -822,6 +1080,12 @@ Four **Zustand** stores:
   - Auto-reconnect with exponential backoff (1s–10s)
   - Pending subscriptions replayed on reconnect
   - Connection status tracking: `connected`, `connecting`, `reconnecting`, `disconnected`
+- **v0.4.0 additions:**
+  - `joinCollaboration(twinId, user)` — join collaboration room
+  - `leaveCollaboration(twinId)` — leave collaboration room
+  - `broadcastSelection(twinId, meshName)` — share mesh selection with peers
+  - `broadcastSensorEdit(twinId, sensorId, changes)` — share sensor edit with peers
+  - `onPresence(callback)`, `onPeerSelection(callback)`, `onPeerSensorEdit(callback)` — listeners
 
 ---
 
@@ -893,6 +1157,7 @@ Copy `.env.example` to `.env` and configure:
 | `MQTT_PASSWORD` | — | MQTT password |
 | `UPLOAD_DIR` | ./uploads | File upload directory |
 | `MAX_FILE_SIZE` | 104857600 | Max upload size (100MB) |
+| `CDN_BASE_URL` | _(empty)_ | CDN URL prefix for model file URLs (e.g. `https://cdn.example.com`). If empty, uses local `/uploads` path **(v0.3.0)** |
 | `THROTTLE_TTL` | 60 | Rate limit window (seconds) |
 | `THROTTLE_LIMIT` | 100 | Max requests per window |
 | `CORS_ORIGINS` | http://localhost:3000,http://localhost:4200 | Allowed CORS origins |
@@ -1042,6 +1307,42 @@ IoT Device publishes to: sensors/sensor-temp-01/data
       → Socket.IO broadcasts to clients
 ```
 
+### Drag & Drop Sensor Binding Flow (v0.4.0)
+```
+User drags DraggableSensorChip from sidebar/tray
+  → HTML5 dragStart: e.dataTransfer.setData('sensorId', sensorId)
+  → Mouse enters SceneDragDrop overlay (wrapping 3D canvas)
+  → dragOver (throttled):
+    → SceneDragDrop.raycastAtEvent(e)
+      → Convert mouse coords to NDC using canvas bounds
+      → THREE.Raycaster.setFromCamera(ndc, camera)
+      → raycaster.intersectObjects(scene.children, true)
+      → First hit mesh → set emissive blue highlight
+      → Lookup mesh.name in partMap → get modelPartId
+  → User drops on highlighted mesh:
+    → Read sensorId from e.dataTransfer
+    → POST /api/v1/sensors/:sensorId/bind/:modelPartId
+    → Clear highlight, refresh sensorStore
+    → Toast: "Sensor bound to {meshName}"
+```
+
+### Anomaly Detection Flow (v0.4.0)
+```
+Sensor data ingested (HTTP, MQTT, or stream tick)
+  → SensorsService.recordData(sensorId, value)
+    → TimescaleService.insertSensorData()
+    → AnomalyDetectionService.analyze(sensorId, value)
+      → Add to rolling window (last 100 values)
+      → Calculate z-score: |value - mean| / stddev
+      → Calculate spike: |value - prev| / mean
+      → Anomaly score = 0.6 * zScore + 0.4 * spike (0–100)
+      → If score > 50 AND cooldown elapsed:
+        → Create alert (INFO if score < 80, WARNING if ≥ 80)
+        → Publish alert to Redis → broadcast via WebSocket
+    → Check threshold alerts (with hysteresis + cooldown)
+    → Publish sensor:data to Redis
+```
+
 ---
 
 ## 12. Security
@@ -1159,7 +1460,203 @@ All tests use **NestJS Testing Module** with mocked dependencies:
 
 ---
 
-## 15. Troubleshooting
+## 15. 3D Model Management (v0.3.0)
+
+The following changes were made in v0.3.0:
+
+### Backend
+
+| Area | Change |
+|---|---|
+| **Models Module** | New `ModelsModule` with controller, service, DTOs for full 3D model lifecycle |
+| **File Upload** | Multer-based multipart upload with file type/size validation. Supports `.glb`, `.gltf`, `.obj`, `.fbx` |
+| **Mesh Parsing** | Automatic extraction of mesh names from GLTF/GLB files, creating `ModelPart` records with UUIDs |
+| **Metadata Cache** | In-memory cache (60s TTL) for model list/detail queries, auto-invalidated on mutations |
+| **CDN Support** | `CDN_BASE_URL` env var prefixes file URLs for CDN delivery |
+| **Static Serving** | `app.useStaticAssets()` serves `/uploads` directory |
+| **Cascade Delete** | Model delete unbinds all sensors, removes file from disk, deletes model + parts |
+| **Sensor Binding** | `bindToModelPart` validates model part exists and belongs to tenant |
+| **Schema** | `Model3D` extended with `name`, `description`, `tenantId`, `ModelFormat` enum. Added `@@index([tenantId, twinId])` |
+| **Swagger** | Added `models` tag to Swagger documentation |
+
+### Frontend
+
+| Area | Change |
+|---|---|
+| **ModelsPage** | New page: drag & drop upload, file picker, twin selector, model card grid, edit modal, delete with bound-sensor warning |
+| **UploadedModel** | New component: dynamic 3D model loader (GLTFLoader/OBJLoader), auto-center/scale, mesh-to-UUID mapping, realtime sensor color coding |
+| **SceneViewer** | Accepts optional `model` prop — renders uploaded model or falls back to DemoFactory |
+| **ViewerPage** | Model selector dropdown, URL param support (`?modelId=`), fetches models list |
+| **SensorBindingPanel** | UUID-based binding, bind/unbind existing sensors, create & bind new sensors, displays `modelPartId` |
+| **TwinsPage** | Added edit/delete for twins and assets with modal dialogs and confirmation |
+| **SensorsPage** | Added create/edit/delete sensors with modals, threshold editing, bound status badge |
+| **DashboardPage** | Added 3D Models KPI card, 5-column grid layout |
+| **Sidebar** | Added "3D Models" navigation link (FileBox icon) |
+| **ConfirmDialog** | New reusable confirmation modal for destructive actions |
+| **useRole Hook** | Frontend RBAC utility: `canEdit`, `canDelete`, `canUpload`, `isAdmin`, `isViewer` |
+| **RBAC Enforcement** | Upload/edit/delete buttons hidden for unauthorized roles (VIEWER=read-only, OPERATOR=no delete, MANAGER+=full CRUD) |
+| **viewerStore** | Added `selectedModelPartId`, `activeModelId`, `setActiveModel()` |
+| **Types** | Extended `Model3D`, `ModelPart` interfaces, added `ModelFormat` type |
+| **API Service** | Added `modelsApi` namespace (list, get, upload, update, delete, boundSensors) |
+
+### RBAC Summary (v0.3.0)
+
+| Action | ADMIN | MANAGER | OPERATOR | VIEWER |
+|---|---|---|---|---|
+| View models / twins / sensors | ✓ | ✓ | ✓ | ✓ |
+| Upload / edit models | ✓ | ✓ | ✗ | ✗ |
+| Delete models | ✓ | ✓ | ✗ | ✗ |
+| Create / edit sensors | ✓ | ✓ | ✓ | ✗ |
+| Delete sensors | ✓ | ✓ | ✗ | ✗ |
+| Edit twins / assets | ✓ | ✓ | ✓ | ✗ |
+| Delete twins / assets | ✓ | ✓ | ✗ | ✗ |
+| Override / stream control | ✓ | ✓ | ✗ | ✗ |
+| Permanent delete models **(v0.4.0)** | ✓ | ✗ | ✗ | ✗ |
+| Create / revoke share links **(v0.4.0)** | ✓ | ✓ | ✗ | ✗ |
+| Export CSV / JSON **(v0.4.0)** | ✓ | ✓ | ✓ | ✓ |
+
+---
+
+## 16. v0.4.0 — Intelligence, Collaboration & Safety
+
+### 16.1 3D Model Versioning
+
+- **Schema**: Added `version`, `isLatest`, `parentModelId` fields to `Model3D`
+- **Upload new version**: `POST /api/v1/models/:id/version` — creates a child version, demotes previous latest
+- **Version history**: `GET /api/v1/models/:id/versions` — returns all versions in lineage
+- **Rollback**: `POST /api/v1/models/:id/rollback` — promotes target version to latest
+- **Frontend**: `VersionSelector` component with dropdown, rollback button; `UploadVersionModal` for new version upload; version badge on model cards
+
+### 16.2 Soft Delete
+
+- **Schema**: Added `deletedAt` field to `Model3D`
+- `DELETE /api/v1/models/:id` now sets `deletedAt` (soft delete)
+- `POST /api/v1/models/:id/restore` — restores soft-deleted model
+- `DELETE /api/v1/models/:id/permanent` — permanently deletes (ADMIN only)
+- All list/get queries filter out deleted records by default; `?includeDeleted=true` to include
+- **Frontend**: "Show deleted" toggle, restore/permanent-delete buttons, "deleted" badge
+
+### 16.3 Drag & Drop Sensor Placement
+
+**Architecture:** HTML5 drag events on an overlay div + Three.js raycasting to resolve the mesh under the cursor.
+
+**Components:**
+- **`SceneDragDrop`** (`SensorDragOverlay.tsx`) — wraps the 3D canvas div; intercepts `dragOver`/`dragLeave`/`drop`
+  - On `dragOver`: raycasts from mouse position through the Three.js scene → finds mesh → highlights it with blue emissive glow → stores `meshName` + `modelPartId`
+  - On `drop`: reads `sensorId` from `dataTransfer`, resolves `modelPartId` from the highlighted mesh, calls `sensorsApi.bind(sensorId, modelPartId)`, refreshes sensor store, shows toast
+  - Visual overlay shows "Drop sensor on highlighted mesh" during drag
+- **`SceneCapture`** (`SceneViewer.tsx`) — tiny R3F component inside `<Canvas>` that writes live `camera`, `scene`, and `gl.domElement` into a shared ref (exposed as `SceneInternals` interface)
+- **`SceneViewer`** — builds `partMap` (meshName → modelPartId) from the active model, wraps `<Canvas>` in `<SceneDragDrop>`, passes ref + partMap
+- **`DraggableSensorChip`** (`SensorDragOverlay.tsx`) — draggable chip that sets `sensorId` in `dataTransfer` on drag start
+
+**Drag sources (unbound sensors):**
+- `SensorBindingPanel` — "Drag to 3D Model" section with chips for each unbound sensor (visible when a mesh is selected)
+- `ViewerPage` — always-visible floating sensor tray when unbound sensors exist and no mesh is selected
+
+**Flow:**
+```
+User drags DraggableSensorChip from sidebar
+  → dragStart: e.dataTransfer.setData('sensorId', id)
+  → dragOver: SceneDragDrop.raycastAtEvent()
+    → Raycaster casts into scene from mouse NDC coords
+    → First intersected mesh → highlight with emissive blue
+    → Resolve meshName → modelPartId via partMap
+  → drop: read sensorId from dataTransfer
+    → sensorsApi.bind(sensorId, modelPartId)
+    → fetchSensors() to refresh store
+    → toast success/error
+```
+
+### 16.4 Real-Time Collaboration
+
+- **Presence system**: WebSocket events `collaboration:join`, `collaboration:leave`, `collaboration:presence`
+- **Selection broadcast**: `collaboration:select` — broadcasts mesh selection to other users
+- **Sensor edit broadcast**: `collaboration:sensor-edit` — last-write-wins conflict resolution
+- **Frontend**: `PresenceIndicator` component shows active collaborators with avatar colors
+- Automatic cleanup on disconnect
+
+### 16.5 AI Anomaly Detection
+
+- **Module**: `AnomalyDetectionService` — rolling window statistical model
+- **Algorithm**: Z-score (3σ) + sudden spike detection with configurable thresholds
+- **Anomaly score**: 0-100 (60% z-score weight, 40% spike weight)
+- **Integration**: Automatically analyzed on every sensor data ingest
+- **Alerts**: Anomaly triggers INFO (score < 80) or WARNING (score ≥ 80) alerts with 60s cooldown
+- **Bootstrap**: `bootstrapSensor()` loads last 24h of data on init for immediate detection
+
+### 16.6 Sensor History Playback
+
+- **Component**: `PlaybackControls` — time range selector, play/pause/skip, speed control (0.5x-5x)
+- Loads historical data for all selected sensors and replays frame-by-frame
+- Progress bar with frame counter
+- Integrated into ViewerPage with toggle button
+
+### 16.7 Export & Sharing
+
+- **CSV export**: `GET /api/v1/export/sensors/:id/csv?from=&to=` — downloads sensor data as CSV
+- **JSON export**: `GET /api/v1/export/twins/:id/json` — exports full twin configuration
+- **Share links**: `POST /api/v1/export/twins/:id/share` — creates time-limited public read-only link
+- **Public access**: `GET /api/v1/export/shared/:token` — no auth required
+- **Revoke**: `DELETE /api/v1/export/shared/:token`
+
+### 16.8 Device Validation Layer
+
+- **Schema validation**: `validationSchema` JSON field on Sensor model
+- Supports: `minValue`, `maxValue`, `valueType` (integer check), `requiredMetadata`
+- `SensorsService.validatePayload()` rejects invalid payloads with descriptive errors
+
+### 16.9 Advanced Alert System
+
+- **INFO severity**: Added to `AlertSeverity` enum — used for anomaly detection alerts
+- **Alert cooldown**: `alertCooldownMs` per sensor (default 30s) — prevents alert spam
+- **Hysteresis**: `alertHysteresis` per sensor — value must exceed threshold by hysteresis amount
+- **Frontend**: INFO severity badge (blue), improved empty state
+
+### 16.10 UI/UX Refinement
+
+- **Loading skeletons**: `Skeleton`, `CardSkeleton`, `TableSkeleton`, `ListSkeleton` components
+- **Empty states**: `EmptyState` component with icon, title, description, and action
+- **Navigation**: Version badges on model cards, playback toggle in viewer
+- **Model cards**: Version badge, deleted badge, restore/permanent-delete actions
+
+### New API Endpoints (v0.4.0)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/models/:id/version` | Upload new model version |
+| GET | `/models/:id/versions` | Get version history |
+| POST | `/models/:id/rollback` | Rollback to version |
+| POST | `/models/:id/restore` | Restore soft-deleted model |
+| DELETE | `/models/:id/permanent` | Permanently delete (ADMIN) |
+| GET | `/export/sensors/:id/csv` | Export sensor CSV |
+| GET | `/export/twins/:id/json` | Export twin JSON |
+| POST | `/export/twins/:id/share` | Create share link |
+| GET | `/export/shared/:token` | Access shared twin |
+| DELETE | `/export/shared/:token` | Revoke share link |
+
+### New WebSocket Events (v0.4.0)
+
+| Event | Direction | Description |
+|-------|-----------|-------------|
+| `collaboration:join` | Client → Server | Join twin collaboration room |
+| `collaboration:leave` | Client → Server | Leave collaboration room |
+| `collaboration:presence` | Server → Client | Updated user presence list |
+| `collaboration:select` | Client → Server | Broadcast mesh selection |
+| `collaboration:selection` | Server → Client | Receive selection from peer |
+| `collaboration:sensor-edit` | Client → Server | Broadcast sensor edit |
+| `collaboration:sensor-edited` | Server → Client | Receive edit from peer |
+
+### Schema Changes (v0.4.0)
+
+**Model3D** — added: `version` (Int), `isLatest` (Boolean), `parentModelId` (String?), `deletedAt` (DateTime?)
+
+**Sensor** — added: `alertCooldownMs` (Int?), `alertHysteresis` (Float?), `validationSchema` (Json?)
+
+**AlertSeverity** — added: `INFO`
+
+---
+
+## 17. Troubleshooting
 
 ### Port conflicts
 ```bash
@@ -1195,4 +1692,4 @@ kill $(lsof -t -i:3000); npm run start:dev
 
 ---
 
-*NebulaTwin Pro — Built with NestJS, React, Three.js, TimescaleDB, Redis, Kafka, and MQTT.*
+*NebulaTwin Pro v0.4.0 — Built with NestJS, React, Three.js, TimescaleDB, Redis, Kafka, and MQTT.*

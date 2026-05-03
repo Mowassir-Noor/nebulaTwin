@@ -18,6 +18,9 @@ import { RealtimeModule } from './modules/realtime/realtime.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { AlertsModule } from './modules/alerts/alerts.module';
 import { HealthModule } from './modules/health/health.module';
+import { ModelsModule } from './modules/models/models.module';
+import { AnomalyModule } from './modules/anomaly/anomaly.module';
+import { ExportModule } from './modules/export/export.module';
 
 @Module({
   imports: [
@@ -52,6 +55,9 @@ import { HealthModule } from './modules/health/health.module';
     AnalyticsModule,
     AlertsModule,
     HealthModule,
+    ModelsModule,
+    AnomalyModule,
+    ExportModule,
   ],
 })
 export class AppModule {}

@@ -8,6 +8,7 @@ import type { Alert, AlertEvent } from '@/types';
 function severityBadge(severity: string) {
   const base = 'px-2 py-0.5 rounded text-xs font-semibold uppercase';
   if (severity === 'CRITICAL') return `${base} bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300`;
+  if (severity === 'INFO') return `${base} bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300`;
   return `${base} bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300`;
 }
 
@@ -64,7 +65,7 @@ export default function AlertsPage() {
             <div className="flex gap-4 text-sm mr-4">
               <span className="text-red-500 font-semibold">{stats.critical} critical</span>
               <span className="text-amber-500 font-semibold">{stats.warning} warning</span>
-              <span className="text-slate-400">{stats.unacknowledged} unacknowledged</span>
+              <span className="text-slate-400">{stats.unacknowledged} unack.</span>
             </div>
           )}
           <div className="flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
@@ -104,8 +105,14 @@ export default function AlertsPage() {
       )}
 
       {!isLoading && alerts.length === 0 && (
-        <div className="text-center py-12 text-slate-400">
-          No alerts to display
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-3">
+            <svg className="w-6 h-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+            </svg>
+          </div>
+          <p className="text-sm font-medium text-slate-600 dark:text-slate-300">No alerts to display</p>
+          <p className="text-xs text-slate-400 mt-1">All quiet — your sensors are operating within thresholds</p>
         </div>
       )}
 

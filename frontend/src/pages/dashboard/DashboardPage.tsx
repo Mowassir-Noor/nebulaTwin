@@ -1,22 +1,25 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { useSensorStore } from '@/store/sensorStore';
 import { useTwinStore } from '@/store/twinStore';
+import { modelsApi } from '@/services/api';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, AreaChart, Area,
 } from 'recharts';
-import { Activity, Box, Cpu, AlertTriangle } from 'lucide-react';
+import { Activity, Box, Cpu, AlertTriangle, FileBox } from 'lucide-react';
 
 export default function DashboardPage() {
   const { sensors, fetchSensors, realtimeValues, initWebSocket } = useSensorStore();
   const { twins, fetchTwins } = useTwinStore();
+  const [modelCount, setModelCount] = useState(0);
 
   useEffect(() => {
     fetchSensors();
     fetchTwins();
     initWebSocket();
+    modelsApi.list().then(({ data }) => setModelCount(data.length)).catch(() => {});
   }, []);
 
   const activeSensors = sensors.filter((s) => s.mode === 'MANUAL' || s.streamActive);
@@ -52,7 +55,7 @@ export default function DashboardPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <KPICard
           icon={<Box size={20} />}
           label="Digital Twins"
@@ -70,6 +73,12 @@ export default function DashboardPage() {
           label="Active Streams"
           value={activeSensors.length}
           color="text-warning"
+        />
+        <KPICard
+          icon={<FileBox size={20} />}
+          label="3D Models"
+          value={modelCount}
+          color="text-info"
         />
         <KPICard
           icon={<AlertTriangle size={20} />}

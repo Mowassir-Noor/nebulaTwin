@@ -30,6 +30,8 @@ export class RealtimeGateway
   private readonly roomBuffers = new Map<string, SensorEvent>();
   private flushTimer: NodeJS.Timeout | null = null;
   private readonly activeRedisSubscriptions = new Set<string>();
+  // Collaboration: track active users per twin
+  private readonly twinPresence = new Map<string, Map<string, { userId: string; userName: string; joinedAt: number }>>();
 
   constructor(private readonly eventBus: EventBusService) {}
 
@@ -44,10 +46,6 @@ export class RealtimeGateway
     this.clientSubscriptions.set(client.id, new Set());
   }
 
-  handleDisconnect(client: Socket) {
-    this.logger.debug(`Client disconnected: ${client.id}`);
-    this.clientSubscriptions.delete(client.id);
-  }
 
   // ─── Subscribe to tenant-level sensor data ─────────────────
 
@@ -161,6 +159,99 @@ export class RealtimeGateway
 
   broadcastAlert(alert: AlertEvent) {
     this.server.to(`tenant:${alert.tenantId}`).emit('alert', alert);
+  }
+
+  // ─── Collaboration: Presence ──────────────────────────────
+
+  @SubscribeMessage('collaboration:join')
+  handleCollaborationJoin(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { twinId: string; userId: string; userName: string },
+  ) {
+    const room = `collab:${data.twinId}`;
+    client.join(room);
+
+    if (!this.twinPresence.has(data.twinId)) {
+      this.twinPresence.set(data.twinId, new Map());
+    }
+    this.twinPresence.get(data.twinId)!.set(client.id, {
+      userId: data.userId,
+      userName: data.userName,
+      joinedAt: Date.now(),
+    });
+
+    // Broadcast updated presence to all in twin
+    const users = Array.from(this.twinPresence.get(data.twinId)!.values());
+    this.server.to(room).emit('collaboration:presence', { twinId: data.twinId, users });
+    this.logger.log(`User ${data.userName} joined collaboration on twin ${data.twinId}`);
+    return { joined: room, users };
+  }
+
+  @SubscribeMessage('collaboration:leave')
+  handleCollaborationLeave(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { twinId: string },
+  ) {
+    const room = `collab:${data.twinId}`;
+    client.leave(room);
+    this.twinPresence.get(data.twinId)?.delete(client.id);
+
+    const users = Array.from(this.twinPresence.get(data.twinId)?.values() || []);
+    this.server.to(room).emit('collaboration:presence', { twinId: data.twinId, users });
+    return { left: room };
+  }
+
+  // ─── Collaboration: Selection broadcast ───────────────────
+
+  @SubscribeMessage('collaboration:select')
+  handleCollaborationSelect(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { twinId: string; userId: string; userName: string; meshName: string | null; modelPartId: string | null },
+  ) {
+    const room = `collab:${data.twinId}`;
+    client.to(room).emit('collaboration:selection', {
+      userId: data.userId,
+      userName: data.userName,
+      meshName: data.meshName,
+      modelPartId: data.modelPartId,
+    });
+    return { broadcast: true };
+  }
+
+  // ─── Collaboration: Sensor edit broadcast (last-write-wins) ─
+
+  @SubscribeMessage('collaboration:sensor-edit')
+  handleCollaborationSensorEdit(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { twinId: string; userId: string; userName: string; sensorId: string; field: string; value: unknown },
+  ) {
+    const room = `collab:${data.twinId}`;
+    client.to(room).emit('collaboration:sensor-edited', {
+      userId: data.userId,
+      userName: data.userName,
+      sensorId: data.sensorId,
+      field: data.field,
+      value: data.value,
+      timestamp: Date.now(),
+    });
+    return { broadcast: true };
+  }
+
+  // ─── Clean up presence on disconnect ──────────────────────
+
+  handleDisconnect(client: Socket) {
+    this.logger.debug(`Client disconnected: ${client.id}`);
+    this.clientSubscriptions.delete(client.id);
+
+    // Remove from all twin presence maps
+    for (const [twinId, presenceMap] of this.twinPresence) {
+      if (presenceMap.has(client.id)) {
+        presenceMap.delete(client.id);
+        const room = `collab:${twinId}`;
+        const users = Array.from(presenceMap.values());
+        this.server.to(room).emit('collaboration:presence', { twinId, users });
+      }
+    }
   }
 
   onModuleDestroy() {

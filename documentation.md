@@ -415,7 +415,7 @@ frontend/src/
 | `SensorMode` | REAL, MANUAL, **STREAM** |
 | `AssetType` | FACTORY, LINE, MACHINE, COMPONENT |
 | `StreamPattern` | CONSTANT, LINEAR_INCREASE, LINEAR_DECREASE, SINE, RANDOM |
-| `ModelFormat` | GLTF, GLB, OBJ, FBX **(v0.3.0)** |
+| `ModelFormat` | GLTF, GLB, OBJ **(v0.4.0)** |
 | `AlertSeverity` | **INFO** **(v0.4.0)**, WARNING, CRITICAL |
 
 #### Alert Model (new in v0.2.0)
@@ -565,7 +565,7 @@ Base URL: `/api/v1`
 **Upload Request (multipart/form-data):**
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `file` | File | Yes | 3D model file (.glb, .gltf, .obj, .fbx) |
+| `file` | File | Yes | 3D model file (.glb, .gltf, .obj) |
 | `twinId` | String | Yes | Digital twin to associate with |
 | `name` | String | No | Model name (defaults to filename) |
 | `description` | String | No | Model description |
@@ -587,7 +587,7 @@ Base URL: `/api/v1`
 }
 ```
 
-**File validation:** Allowed extensions: `.glb`, `.gltf`, `.obj`, `.fbx`. Max size: 100MB (configurable via `MAX_FILE_SIZE`).
+**File validation:** Allowed extensions: `.glb`, `.gltf`, `.obj`. Max size: 100MB (configurable via `MAX_FILE_SIZE`).
 
 **Mesh parsing:** On upload, GLTF/GLB files are parsed to extract mesh names. Each unique mesh becomes a `ModelPart` with a UUID, enabling sensor binding by `modelPartId`.
 
@@ -866,7 +866,7 @@ These endpoints are **unauthenticated** for use by container orchestrators.
 
 **Upload Pipeline:**
 ```
-User uploads .glb file via POST /models (multipart/form-data)
+User uploads a supported model file (.glb, .gltf, or .obj) via POST /models (multipart/form-data)
   → ModelsController validates file type and size
   → ModelsService.uploadModel()
     → Validates twin belongs to tenant
@@ -881,13 +881,15 @@ User uploads .glb file via POST /models (multipart/form-data)
 |---|---|---|
 | glTF Binary | `.glb` | Yes — extracts mesh names from binary JSON chunk |
 | glTF | `.gltf` | Yes — parses JSON to extract mesh node names |
-| Wavefront OBJ | `.obj` | No — creates single default part |
-| Autodesk FBX | `.fbx` | No — creates single default part |
+| Wavefront OBJ | `.obj` | Yes — loads geometry as a single part when mesh names are unavailable |
+
+> FBX uploads are no longer supported. Use GLB, GLTF, or OBJ files for reliable viewer rendering.
 
 **File Storage:**
 - Default: local disk at `./uploads/models/`
 - CDN-ready: set `CDN_BASE_URL` env var to prefix all file URLs
 - Static file serving via `app.useStaticAssets()` at `/uploads`
+- Frontend dev servers must proxy `/uploads` to the backend so model requests return the binary file instead of the Vite HTML shell
 
 **Metadata Cache:**
 - In-memory cache with 60-second TTL for model list and detail queries
@@ -1469,7 +1471,7 @@ The following changes were made in v0.3.0:
 | Area | Change |
 |---|---|
 | **Models Module** | New `ModelsModule` with controller, service, DTOs for full 3D model lifecycle |
-| **File Upload** | Multer-based multipart upload with file type/size validation. Supports `.glb`, `.gltf`, `.obj`, `.fbx` |
+| **File Upload** | Multer-based multipart upload with file type/size validation. Supports `.glb`, `.gltf`, `.obj` |
 | **Mesh Parsing** | Automatic extraction of mesh names from GLTF/GLB files, creating `ModelPart` records with UUIDs |
 | **Metadata Cache** | In-memory cache (60s TTL) for model list/detail queries, auto-invalidated on mutations |
 | **CDN Support** | `CDN_BASE_URL` env var prefixes file URLs for CDN delivery |
@@ -1689,6 +1691,9 @@ NestJS `--watch` mode may hold the old process. Kill and restart:
 ```bash
 kill $(lsof -t -i:3000); npm run start:dev
 ```
+
+### 3D model renders blank or as HTML
+If the browser console logs `Unexpected line: "<!doctype html>"` or the viewer shows a blank panel, the model URL is being served by the frontend dev server instead of the backend. Make sure `frontend/vite.config.ts` proxies `/uploads` to `http://localhost:3000`, then reload the viewer.
 
 ---
 

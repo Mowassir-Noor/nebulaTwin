@@ -2,13 +2,15 @@
 
 **Cloud-based Digital Twin SaaS Platform** — Full-stack NestJS + React application for industrial IoT monitoring, 3D visualization, and real-time sensor management.
 
-**Version:** 0.2.0 (Hardened)
+**Version:** 0.4.0 (Models + Collaboration)
 
 ## Tech Stack
 
 **Backend:** NestJS, TypeScript, Prisma, PostgreSQL + TimescaleDB, Redis, Kafka, MQTT (Mosquitto), Socket.IO, JWT + Google OAuth
 
 **Frontend:** React 19, Vite, Tailwind CSS, Zustand, TanStack Query, Three.js, Recharts, Socket.IO Client
+
+**3D Models:** Upload, version, rollback, and bind sensors to GLB / GLTF / OBJ models in the browser.
 
 **Infrastructure:** Docker Compose, NGINX, Node.js 20
 
@@ -50,6 +52,12 @@ cd frontend && npm run dev
 - **Frontend:** http://localhost:5173
 - **Swagger:** http://localhost:3000/docs
 - **Health:** http://localhost:3000/api/v1/health
+
+### 3D Model Viewer Notes
+- Supported upload formats: `.glb`, `.gltf`, `.obj`
+- Model files are served from `/uploads` by the backend
+- In frontend dev, `vite.config.ts` proxies `/uploads` to `http://localhost:3000`
+- If the viewer shows a blank panel, verify the model URL returns the file content and not HTML
 
 ### Full Docker Deploy
 ```bash
@@ -101,6 +109,14 @@ docker-compose up -d
 
 ### Analytics
 - `GET /analytics/sensors/:id/history` · `GET /analytics/sensors/:id/latest` · `GET /analytics/sensors/:id/aggregated`
+
+### 3D Models
+- `POST /models` — Upload a model with `file` + `twinId`
+- `POST /models/:id/version` — Upload a new version
+- `GET /models` · `GET /models/:id` · `GET /models/:id/versions`
+- `POST /models/:id/rollback` · `PATCH /models/:id` · `DELETE /models/:id`
+- `POST /models/:id/restore` · `DELETE /models/:id/permanent`
+- `GET /models/:id/bound-sensors` — Count bound sensors
 
 > All endpoints prefixed with `/api/v1`
 

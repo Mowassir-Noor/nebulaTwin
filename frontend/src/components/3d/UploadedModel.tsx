@@ -7,13 +7,16 @@ import { useSensorStore } from '@/store/sensorStore';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { Html } from '@react-three/drei';
+import { formatSensorValue, getSensorEmissiveIntensity, getSensorGradientColor } from '@/utils/sensorVisualization';
 import type { Model3D } from '@/types';
 
 interface UploadedModelProps {
   model: Model3D;
+  playbackValues?: Map<string, number>;
+  playbackMode?: boolean;
 }
 
-export function UploadedModel({ model }: UploadedModelProps) {
+export function UploadedModel({ model, playbackValues, playbackMode = false }: UploadedModelProps) {
   const [scene, setScene] = useState<THREE.Group | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -81,10 +84,10 @@ export function UploadedModel({ model }: UploadedModelProps) {
 
   if (loading || !scene) return null;
 
-  return <ModelScene scene={scene} model={model} />;
+  return <ModelScene scene={scene} model={model} playbackValues={playbackValues} playbackMode={playbackMode} />;
 }
 
-function ModelScene({ scene, model }: { scene: THREE.Group; model: Model3D }) {
+function ModelScene({ scene, model, playbackValues, playbackMode }: { scene: THREE.Group; model: Model3D; playbackValues?: Map<string, number>; playbackMode: boolean }) {
   const groupRef = useRef<THREE.Group>(null!);
   const parts = useMemo(() => model.modelParts || model.parts || [], [model]);
 
@@ -162,7 +165,7 @@ function ModelScene({ scene, model }: { scene: THREE.Group; model: Model3D }) {
   return (
     <group ref={groupRef}>
       <primitive object={scene} />
-      <InteractiveMeshes meshes={sceneMeshes} resolvePartId={resolvePartId} />
+      <InteractiveMeshes meshes={sceneMeshes} resolvePartId={resolvePartId} playbackValues={playbackValues} playbackMode={playbackMode} />
     </group>
   );
 }
@@ -170,9 +173,11 @@ function ModelScene({ scene, model }: { scene: THREE.Group; model: Model3D }) {
 interface InteractiveMeshesProps {
   meshes: THREE.Mesh[];
   resolvePartId: (mesh: THREE.Mesh, index: number) => string | null;
+  playbackValues?: Map<string, number>;
+  playbackMode: boolean;
 }
 
-function InteractiveMeshes({ meshes, resolvePartId }: InteractiveMeshesProps) {
+function InteractiveMeshes({ meshes, resolvePartId, playbackValues, playbackMode }: InteractiveMeshesProps) {
   const { camera, controls } = useThree();
   const selectMesh = useViewerStore((s) => s.selectMesh);
   const hoverMesh = useViewerStore((s) => s.hoverMesh);
@@ -183,6 +188,8 @@ function InteractiveMeshes({ meshes, resolvePartId }: InteractiveMeshesProps) {
   const sensors = useSensorStore((s) => s.sensors);
 
   const [targetCameraData, setTargetCameraData] = useState<{ position: THREE.Vector3, target: THREE.Vector3 } | null>(null);
+  const baseColorsRef = useRef<Map<string, THREE.Color>>(new Map());
+  const smoothedValuesRef = useRef<Map<string, number>>(new Map());
 
   // Build modelPartId → sensor lookup
   const partToSensor = useMemo(() => {
@@ -252,41 +259,58 @@ function InteractiveMeshes({ meshes, resolvePartId }: InteractiveMeshesProps) {
     [hoverMesh],
   );
 
-  // Apply color coding and selection highlight per frame
   useFrame((state, delta) => {
     meshes.forEach((mesh, i) => {
       const partId = resolvePartId(mesh, i);
       const material = mesh.material;
       if (!material) return;
-      const mat = Array.isArray(material)
-        ? (material[0] as THREE.MeshStandardMaterial)
-        : (material as THREE.MeshStandardMaterial);
-      if (!mat?.color) return;
-
-      // Selection: purple | Hover: blue | Default: none
-      if (selectedMeshName === mesh.name) {
-        mat.emissive?.setHex(0x6366f1);
-        mat.emissiveIntensity = 0.2;
-      } else if (hoveredMeshName === mesh.name) {
-        mat.emissive?.setHex(0x3b82f6);
-        mat.emissiveIntensity = 0.15;
-      } else {
-        mat.emissive?.setHex(0x000000);
-        mat.emissiveIntensity = 0;
+      const materials = Array.isArray(material)
+        ? (material as THREE.MeshStandardMaterial[])
+        : [material as THREE.MeshStandardMaterial];
+      const sensor = partId ? partToSensor.get(partId) : null;
+      const rawValue = sensor ? (playbackMode ? playbackValues?.get(sensor.id) : realtimeValues.get(sensor.id)?.value) ?? sensor.manualValue : undefined;
+      const previousValue = sensor ? smoothedValuesRef.current.get(sensor.id) ?? rawValue : undefined;
+      const smoothedValue = typeof rawValue === 'number' && typeof previousValue === 'number'
+        ? THREE.MathUtils.lerp(previousValue, rawValue, Math.min(1, delta * 4))
+        : rawValue;
+      if (sensor && typeof smoothedValue === 'number') {
+        smoothedValuesRef.current.set(sensor.id, smoothedValue);
       }
 
-      // Sensor value color coding (only for bound parts)
-      if (partId) {
-        const sensor = partToSensor.get(partId);
-        if (sensor) {
-          const data = realtimeValues.get(sensor.id);
-          if (data) {
-            if (data.value > 80) mat.color.set('#ef4444');
-            else if (data.value > 60) mat.color.set('#eab308');
-            else mat.color.set('#22c55e');
-          }
+      materials.forEach((mat, materialIndex) => {
+        if (!mat?.color) return;
+        const colorKey = `${mesh.uuid}:${materialIndex}`;
+        if (!baseColorsRef.current.has(colorKey)) {
+          baseColorsRef.current.set(colorKey, mat.color.clone());
         }
-      }
+
+        const baseColor = baseColorsRef.current.get(colorKey) ?? new THREE.Color('#64748b');
+        const targetColor = sensor && typeof smoothedValue === 'number'
+          ? new THREE.Color(getSensorGradientColor(smoothedValue, sensor))
+          : baseColor;
+        mat.color.lerp(targetColor, Math.min(1, delta * 6));
+
+        if (mat.emissive) {
+          const isSelected = selectedMeshName === mesh.name;
+          const isHovered = hoveredMeshName === mesh.name;
+          const emissiveColor = isSelected
+            ? new THREE.Color('#22d3ee')
+            : isHovered
+              ? new THREE.Color('#3b82f6')
+              : sensor && typeof smoothedValue === 'number'
+                ? new THREE.Color(getSensorGradientColor(smoothedValue, sensor))
+                : new THREE.Color('#000000');
+          const emissiveIntensity = isSelected
+            ? 0.85
+            : isHovered
+              ? 0.34
+              : sensor && typeof smoothedValue === 'number'
+                ? getSensorEmissiveIntensity(smoothedValue, sensor)
+                : 0;
+          mat.emissive.lerp(emissiveColor, Math.min(1, delta * 8));
+          mat.emissiveIntensity = THREE.MathUtils.lerp(mat.emissiveIntensity ?? 0, emissiveIntensity, Math.min(1, delta * 8));
+        }
+      });
     });
 
     // Camera animation
@@ -307,12 +331,16 @@ function InteractiveMeshes({ meshes, resolvePartId }: InteractiveMeshesProps) {
         
         const partId = resolvePartId(mesh, i);
         const sensor = partId ? partToSensor.get(partId) : null;
-        const sensorData = sensor ? realtimeValues.get(sensor.id) : null;
+        const rawSensorValue = sensor ? (playbackMode ? playbackValues?.get(sensor.id) : realtimeValues.get(sensor.id)?.value) ?? sensor.manualValue : undefined;
+        const isSelected = selectedMeshName === mesh.name;
+        const isHovered = hoveredMeshName === mesh.name;
+        const overlayColor = isSelected ? '#22d3ee' : isHovered ? '#3b82f6' : '#ffffff';
+        const overlayOpacity = isSelected ? 0.3 : isHovered ? 0.16 : 0;
         
         let centerPos = new THREE.Vector3(0, 0, 0);
-        if (sensorData && geometry.boundingBox) {
+        if (typeof rawSensorValue === 'number' && geometry.boundingBox) {
           centerPos = geometry.boundingBox.getCenter(new THREE.Vector3());
-        } else if (sensorData) {
+        } else if (typeof rawSensorValue === 'number') {
           geometry.computeBoundingBox();
           if (geometry.boundingBox) {
              centerPos = geometry.boundingBox.getCenter(new THREE.Vector3());
@@ -329,17 +357,13 @@ function InteractiveMeshes({ meshes, resolvePartId }: InteractiveMeshesProps) {
             onPointerOver={(e) => handlePointerOver(e, mesh, i)}
             onPointerOut={handlePointerOut}
           >
-            <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+            <meshBasicMaterial color={overlayColor} transparent opacity={overlayOpacity} depthWrite={false} wireframe />
             
-            {sensorData && sensor && (
+            {typeof rawSensorValue === 'number' && sensor && (
               <Html center position={centerPos} distanceFactor={15}>
-                <div className={`px-2 py-1 rounded shadow-lg backdrop-blur-md border text-xs whitespace-nowrap pointer-events-none transition-all ${
-                  sensorData.value > 80 ? 'bg-red-900/50 border-red-500/50 text-red-100' :
-                  sensorData.value > 60 ? 'bg-yellow-900/50 border-yellow-500/50 text-yellow-100' :
-                  'bg-[#050B18]/70 border-blue-500/30 text-blue-100'
-                }`}>
+                <div className="whitespace-nowrap rounded-xl border px-2.5 py-1.5 text-xs shadow-lg backdrop-blur-md pointer-events-none transition-all" style={{ borderColor: `${getSensorGradientColor(rawSensorValue, sensor)}80`, backgroundColor: '#020617bf', color: '#e2e8f0' }}>
                   <div className="font-bold mb-0.5">{sensor.name}</div>
-                  <div className="font-mono">{sensorData.value.toFixed(1)} {sensor.unit}</div>
+                  <div className="font-mono" style={{ color: getSensorGradientColor(rawSensorValue, sensor) }}>{formatSensorValue(rawSensorValue, sensor.unit)}</div>
                 </div>
               </Html>
             )}

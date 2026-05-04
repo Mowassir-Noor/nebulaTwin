@@ -3,6 +3,7 @@ import { useState, useCallback, useRef } from 'react';
 import * as THREE from 'three';
 import { sensorsApi } from '@/services/api';
 import { useSensorStore } from '@/store/sensorStore';
+import { useViewerStore } from '@/store/viewerStore';
 import { toast } from '@/components/ui/Toast';
 
 interface SceneDragDropProps {
@@ -37,7 +38,9 @@ function clearSceneHighlights(scene: THREE.Scene) {
 export function SceneDragDrop({ children, partMap, sceneRef }: SceneDragDropProps) {
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [dropTargetName, setDropTargetName] = useState<string | null>(null);
+  const [successTargetName, setSuccessTargetName] = useState<string | null>(null);
   const fetchSensors = useSensorStore((s) => s.fetchSensors);
+  const hoverMesh = useViewerStore((s) => s.hoverMesh);
 
   // Debounce dragOver raycasting — only run every 50ms
   const lastRaycastTs = useRef(0);
@@ -107,6 +110,7 @@ export function SceneDragDrop({ children, partMap, sceneRef }: SceneDragDropProp
       const hit = raycastAtEvent(e);
       lastHitRef.current = hit;
       setDropTargetName(hit?.meshName ?? null);
+      hoverMesh(hit?.meshName ?? null, hit?.modelPartId ?? null);
 
       const refs = sceneRef.current;
       if (refs?.scene) {
@@ -124,22 +128,24 @@ export function SceneDragDrop({ children, partMap, sceneRef }: SceneDragDropProp
         }
       }
     },
-    [raycastAtEvent, sceneRef],
+    [hoverMesh, raycastAtEvent, sceneRef],
   );
 
   const handleDragLeave = useCallback(() => {
     setIsDraggingOver(false);
     setDropTargetName(null);
     lastHitRef.current = null;
+    hoverMesh(null, null);
     const refs = sceneRef.current;
     if (refs?.scene) clearSceneHighlights(refs.scene);
-  }, [sceneRef]);
+  }, [hoverMesh, sceneRef]);
 
   const handleDrop = useCallback(
     async (e: React.DragEvent) => {
       e.preventDefault();
       setIsDraggingOver(false);
       setDropTargetName(null);
+      hoverMesh(null, null);
 
       const sensorId = e.dataTransfer.getData('sensorId');
       if (!sensorId) return;
@@ -158,6 +164,8 @@ export function SceneDragDrop({ children, partMap, sceneRef }: SceneDragDropProp
       try {
         await sensorsApi.bind(sensorId, hit.modelPartId);
         toast.success(`Sensor bound to "${hit.meshName}"`);
+        setSuccessTargetName(hit.meshName);
+        window.setTimeout(() => setSuccessTargetName(null), 1400);
         await fetchSensors();
       } catch (err: unknown) {
         const msg =
@@ -168,7 +176,7 @@ export function SceneDragDrop({ children, partMap, sceneRef }: SceneDragDropProp
       const refs = sceneRef.current;
       if (refs?.scene) clearSceneHighlights(refs.scene);
     },
-    [raycastAtEvent, fetchSensors, sceneRef],
+    [raycastAtEvent, fetchSensors, hoverMesh, sceneRef],
   );
 
   return (
@@ -181,12 +189,19 @@ export function SceneDragDrop({ children, partMap, sceneRef }: SceneDragDropProp
       {children}
       {/* Visual feedback overlay */}
       {isDraggingOver && (
-        <div className="absolute inset-0 pointer-events-none z-10 rounded-xl border-2 border-dashed border-primary/50 bg-primary/5 flex items-end justify-center pb-4">
-          <span className="text-primary text-sm font-medium bg-background/90 px-4 py-1.5 rounded-lg shadow-sm">
+        <div className="absolute inset-0 pointer-events-none z-10 flex items-end justify-center rounded-2xl border-2 border-dashed border-cyan-400/55 bg-cyan-400/5 pb-4 shadow-[inset_0_0_70px_rgba(34,211,238,0.08)]">
+          <span className="rounded-xl border border-cyan-400/30 bg-slate-950/90 px-4 py-2 text-sm font-medium text-cyan-100 shadow-lg shadow-black/30 backdrop-blur-xl">
             {dropTargetName
               ? `Drop to bind → ${dropTargetName}`
               : 'Drag over a mesh to target it'}
           </span>
+        </div>
+      )}
+      {successTargetName && (
+        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-emerald-400/5">
+          <div className="rounded-2xl border border-emerald-400/40 bg-slate-950/90 px-5 py-3 text-sm font-semibold text-emerald-200 shadow-2xl shadow-emerald-950/30 backdrop-blur-xl animate-in zoom-in-95 fade-in">
+            Sensor bound to {successTargetName}
+          </div>
         </div>
       )}
     </div>
@@ -215,7 +230,7 @@ export function DraggableSensorChip({ sensorId, sensorName }: DraggableSensorChi
     <div
       draggable
       onDragStart={handleDragStart}
-      className="inline-flex items-center gap-1.5 px-2 py-1 bg-primary/10 text-primary text-xs rounded cursor-grab active:cursor-grabbing border border-primary/20 hover:border-primary/40 transition-colors"
+      className="inline-flex cursor-grab items-center gap-1.5 rounded-xl border border-cyan-400/25 bg-cyan-400/10 px-2 py-1 text-xs text-cyan-200 transition-colors hover:border-cyan-300/50 active:cursor-grabbing"
       title="Drag onto a 3D mesh to bind this sensor"
     >
       <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

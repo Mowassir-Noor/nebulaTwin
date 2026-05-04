@@ -2,7 +2,7 @@
 
 **Cloud-based Digital Twin SaaS Platform** — Full-stack NestJS + React application for industrial IoT monitoring, 3D visualization, real-time sensor management, and a high-conversion marketing frontend.
 
-**Version:** 0.6.0 (Industrial Dashboard & Stability)
+**Version:** 0.7.0 (Industrial Viewer Redesign)
 
 ## Tech Stack
 
@@ -175,13 +175,57 @@ npm test
 ```
 19 tests across 3 suites — sensors (8), ingestion (6), alerts (5)
 
+## v0.7.0 Industrial Viewer Redesign
+
+### Full `/viewer` Page Overhaul
+The `/viewer` page has been redesigned into a professional industrial dashboard inspired by Siemens / IBM / Azure Digital Twins interfaces. All existing features (sensor binding, realtime updates, playback, collaboration) are preserved.
+
+#### New Layout
+| Zone | Component | Description |
+|------|-----------|-------------|
+| Top bar | `TopBar.tsx` | Twin/model selector, playback toggle, mode badge (LIVE/PLAYBACK), connection status, presence indicators, fullscreen/reset camera |
+| Left panel | `LeftPanel.tsx` | Collapsible + resizable. Tabs: **Assets Tree** (hierarchical twin → asset → sensor) and **Sensors List** (search, status filter, drag-to-bind chips) |
+| Center | `SceneViewer` | Enhanced 3D canvas with improved lighting, floor grid, fog, damped orbit controls, FPS badge |
+| Right panel | `RightPanel.tsx` | Context panel. Tabs: **Overview** (part info, bound sensors), **Live Data** (realtime chart), **Controls** (sensor override/stream + `SensorBindingPanel`) |
+| Bottom dock | `BottomDock.tsx` | Collapsible. Tabs: **Charts** (multi-sensor realtime/playback area chart), **Alerts**, **Logs**. `PlaybackControls` always visible in dock |
+
+#### 3D Visual Enhancements
+- **Lighting**: hemisphere light, directional shadow caster (`2048×2048` shadow map), two accent point lights
+- **Environment**: `warehouse` HDRI preset, contact shadows, `fog`
+- **Grid + floor**: `gridHelper` at `y = 0`, dark floor plane with `receiveShadow`
+- **Orbit controls**: `enableDamping`, adjusted `rotateSpeed / zoomSpeed / panSpeed`
+- **DPR**: `[1, 2]` pixel ratio for sharp retina rendering
+- **FPS badge**: live frame-rate counter rendered via `Html` inside the Canvas
+
+#### Sensor Visualization
+- **Gradient color**: continuous Green → Yellow → Red interpolation based on normalized sensor value (against `alertMinThreshold` / `alertMaxThreshold`)
+- **Emissive intensity**: mesh glow driven by normalized sensor value (0.08 – 0.50)
+- **Lerped transitions**: all color and emissive changes are frame-lerped (`delta × 6 / 8`) — no flicker
+- **3D labels**: floating HTML tooltip on bound meshes shows sensor name and gradient-colored value
+- **Hover tooltip**: fixed-position overlay outside the canvas (no Z-fighting) with sensor name, value, and status dot
+
+#### Interactions
+- Clicking a mesh selects it, opens `RightPanel`, highlights with cyan emissive glow
+- Hover shows soft blue emissive highlight + floating tooltip
+- Drag sensor chip → mesh still uses `sensorsApi.bind()` unchanged; adds cyan drag-target preview and emerald success banner
+- Playback mode: 3D colors, charts, and the bottom dock timestamp all sync to `playbackValues` — realtime WebSocket updates are frozen until playback ends
+
+#### New Utility: `sensorVisualization.ts`
+Shared helpers used across all panels and 3D components:
+- `normalizeSensorValue` — clamp + normalize against sensor thresholds
+- `getSensorGradientColor` — Green → Yellow → Red hex string
+- `getSensorEmissiveIntensity` — float for Three.js emissive
+- `getSensorStatus` — `'offline' | 'normal' | 'warning' | 'critical'`
+- `getSensorStatusClasses` — Tailwind class string per status
+- `formatSensorValue` — `"72.3 °C"` display string
+
 ## v0.6.0 Industrial Dashboard & Stability
 
 ### Dashboard Overhaul
-- **3-Panel Layout**: The 3D viewer has been transformed into a professional industrial-grade UI with a `LeftSidebar` (asset tree & overview), a centralized `SceneViewer`, and a `RightPanel` (sensor controls & active alerts).
-- **Kinetic Glass Aesthetic**: Complete styling overhaul utilizing dark mode glassmorphism (`backdrop-blur-md`, `bg-gray-900/50`) to create a cohesive high-end SaaS feel.
-- **3D HTML Labels**: Live sensor values are now seamlessly overlaid onto 3D meshes inside the viewer via `@react-three/drei`'s `Html` component.
-- **Strict TypeScript Compliance**: Eradicated remaining TS compilation errors and unified enum typings across `LeftSidebar`, `AlertsPanel`, and `SensorControlsPanel`.
+- **3-Panel Layout**: Initial 3D viewer layout with `AssetTreePanel` (left), `SceneViewer` (center), `ControlSidebar` (right)
+- **Kinetic Glass Aesthetic**: Dark mode glassmorphism styling
+- **3D HTML Labels**: Live sensor values overlaid on 3D meshes via `@react-three/drei` `Html`
+- **Strict TypeScript Compliance**: Resolved TS compilation errors across viewer components
 
 ## Project Structure
 
@@ -214,17 +258,38 @@ frontend/src/
 │   ├── marketing/       # Landing, Features, About, Contact, Pricing pages
 │   ├── dashboard/       # DashboardPage
 │   ├── twins/           # TwinsPage
-│   ├── viewer/          # ViewerPage
+│   ├── viewer/
+│   │   ├── ViewerPage.tsx            # Main orchestrator — layout, model/twin state, playback mode
+│   │   └── components/
+│   │       ├── TopBar.tsx            # Fixed top bar: selectors, mode badge, controls
+│   │       ├── LeftPanel.tsx         # Collapsible/resizable: assets tree + sensors list
+│   │       ├── RightPanel.tsx        # Context panel: overview, live chart, binding controls
+│   │       ├── BottomDock.tsx        # Collapsible dock: charts, alerts, logs, playback
+│   │       ├── AssetTreePanel.tsx    # Legacy (still available)
+│   │       ├── ControlSidebar.tsx    # Legacy (still available)
+│   │       ├── AlertsPanel.tsx       # Alerts display (reused in BottomDock)
+│   │       ├── KPIView.tsx           # KPI metrics
+│   │       └── SensorControlsPanel.tsx
 │   ├── models/          # ModelsPage
 │   ├── alerts/          # AlertsPage
 │   └── sensors/         # SensorsPage, SensorTestingPage
 ├── components/
 │   ├── ui/              # Button, Card, Input, Badge, ErrorBoundary, Toast, ConnectionStatus
 │   ├── layout/          # AppLayout (Dashboard), MarketingLayout (Public), Sidebar
-│   ├── 3d/              # SceneViewer, DemoFactory
-│   └── sensors/         # SensorBindingPanel
+│   ├── 3d/
+│   │   ├── SceneViewer.tsx           # Canvas, lighting, grid, fog, orbit controls, FPS badge
+│   │   ├── DemoFactory.tsx           # Hardcoded demo factory — playback-aware, gradient color
+│   │   ├── UploadedModel.tsx         # GLTF loader — playback-aware, gradient+emissive lerp
+│   │   └── SensorDragOverlay.tsx     # Drag-to-bind with target preview + success animation
+│   ├── playback/        # PlaybackControls
+│   ├── sensors/         # SensorBindingPanel
+│   └── collaboration/   # PresenceIndicator
 ├── store/               # Zustand: auth, twin, sensor, viewer
 ├── services/            # API (axios + retry), WebSocket (reconnect + alerts)
+├── utils/
+│   ├── cn.ts                         # clsx + tailwind-merge helper
+│   ├── rbac.ts                       # useRole RBAC hook
+│   └── sensorVisualization.ts        # Gradient color, emissive, status, format helpers
 └── types/               # TypeScript interfaces
 ```
 

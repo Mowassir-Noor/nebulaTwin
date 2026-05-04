@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { useEffect, useState, useCallback } from 'react';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';

@@ -1,14 +1,14 @@
 # NebulaTwin Pro
 
-**Cloud-based Digital Twin SaaS Platform** — Full-stack NestJS + React application for industrial IoT monitoring, 3D visualization, and real-time sensor management.
+**Cloud-based Digital Twin SaaS Platform** — Full-stack NestJS + React application for industrial IoT monitoring, 3D visualization, real-time sensor management, and a high-conversion marketing frontend.
 
-**Version:** 0.4.1 (3D Model & Sensor Binding Stabilization)
+**Version:** 0.6.0 (Industrial Dashboard & Stability)
 
 ## Tech Stack
 
 **Backend:** NestJS, TypeScript, Prisma, PostgreSQL + TimescaleDB, Redis, Kafka, MQTT (Mosquitto), Socket.IO, JWT + Google OAuth
 
-**Frontend:** React 19, Vite, Tailwind CSS, Zustand, TanStack Query, Three.js, Recharts, Socket.IO Client
+**Frontend:** React 19, Vite, Tailwind CSS, Framer Motion, Zustand, TanStack Query, Three.js, Recharts, Socket.IO Client
 
 **3D Models:** Upload, version, rollback, and bind sensors to **GLB / GLTF** models in the browser. Sensor binding uses stable `modelPartId` UUIDs with index-based fallback.
 
@@ -175,6 +175,14 @@ npm test
 ```
 19 tests across 3 suites — sensors (8), ingestion (6), alerts (5)
 
+## v0.6.0 Industrial Dashboard & Stability
+
+### Dashboard Overhaul
+- **3-Panel Layout**: The 3D viewer has been transformed into a professional industrial-grade UI with a `LeftSidebar` (asset tree & overview), a centralized `SceneViewer`, and a `RightPanel` (sensor controls & active alerts).
+- **Kinetic Glass Aesthetic**: Complete styling overhaul utilizing dark mode glassmorphism (`backdrop-blur-md`, `bg-gray-900/50`) to create a cohesive high-end SaaS feel.
+- **3D HTML Labels**: Live sensor values are now seamlessly overlaid onto 3D meshes inside the viewer via `@react-three/drei`'s `Html` component.
+- **Strict TypeScript Compliance**: Eradicated remaining TS compilation errors and unified enum typings across `LeftSidebar`, `AlertsPanel`, and `SensorControlsPanel`.
+
 ## Project Structure
 
 ```
@@ -201,11 +209,18 @@ src/
     └── health/          # Health probes (liveness, readiness)
 
 frontend/src/
-├── App.tsx              # Router + ErrorBoundary + ToastContainer
-├── pages/               # Dashboard, Twins, Viewer, Sensors, Testing, Alerts
+├── App.tsx              # Router (Public Marketing vs /control Dashboard) + ErrorBoundary
+├── pages/
+│   ├── marketing/       # Landing, Features, About, Contact, Pricing pages
+│   ├── dashboard/       # DashboardPage
+│   ├── twins/           # TwinsPage
+│   ├── viewer/          # ViewerPage
+│   ├── models/          # ModelsPage
+│   ├── alerts/          # AlertsPage
+│   └── sensors/         # SensorsPage, SensorTestingPage
 ├── components/
 │   ├── ui/              # Button, Card, Input, Badge, ErrorBoundary, Toast, ConnectionStatus
-│   ├── layout/          # AppLayout (sidebar + header), Sidebar
+│   ├── layout/          # AppLayout (Dashboard), MarketingLayout (Public), Sidebar
 │   ├── 3d/              # SceneViewer, DemoFactory
 │   └── sensors/         # SensorBindingPanel
 ├── store/               # Zustand: auth, twin, sensor, viewer

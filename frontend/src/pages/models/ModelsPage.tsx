@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';

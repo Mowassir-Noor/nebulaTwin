@@ -1,0 +1,266 @@
+
+> frontend@0.0.0 lint
+> eslint .
+
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/components/3d/SceneViewer.tsx
+  26:3   error  Error: Cannot access refs during render
+
+React refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/components/3d/SceneViewer.tsx:26:3
+  24 | function SceneCapture({ internalsRef }: { internalsRef: React.MutableRefObject<SceneInternals | null> }) {
+  25 |   const { camera, scene, gl } = useThree();
+> 26 |   internalsRef.current = { camera, scene, domElement: gl.domElement };
+     |   ^^^^^^^^^^^^^^^^^^^^ Cannot update ref during render
+  27 |   return null;
+  28 | }
+  29 |  react-hooks/refs
+  76:32  error  Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      @typescript-eslint/no-explicit-any
+  76:64  error  Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      @typescript-eslint/no-explicit-any
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/components/3d/SensorDragOverlay.tsx
+  163:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/components/3d/UploadedModel.tsx
+  106:24  error  Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          @typescript-eslint/no-explicit-any
+  106:67  error  Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          @typescript-eslint/no-explicit-any
+  110:32  error  'i' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     @typescript-eslint/no-unused-vars
+  147:23  error  Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          @typescript-eslint/no-explicit-any
+  148:21  error  Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          @typescript-eslint/no-explicit-any
+  149:21  error  Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          @typescript-eslint/no-explicit-any
+  150:21  error  Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          @typescript-eslint/no-explicit-any
+  151:21  error  Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          @typescript-eslint/no-explicit-any
+  209:9   error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/components/3d/UploadedModel.tsx:209:9
+  207 |         const targetPos = center.clone().add(new THREE.Vector3(distance, distance * 0.8, distance));
+  208 |         
+> 209 |         setTargetCameraData({ position: targetPos, target: center });
+      |         ^^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  210 |         
+  211 |         // Also select the mesh so the binding panel updates
+  212 |         selectMesh(mesh.name, null, focusedModelPartId);  react-hooks/set-state-in-effect
+  293:41  error  Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          @typescript-eslint/no-explicit-any
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/components/collaboration/PresenceIndicator.tsx
+  1:10  error  'useState' is defined but never used   @typescript-eslint/no-unused-vars
+  1:20  error  'useEffect' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/components/models/VersionSelector.tsx
+  29:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/components/models/VersionSelector.tsx:29:5
+  27 |   useEffect(() => {
+  28 |     if (!open) return;
+> 29 |     setLoading(true);
+     |     ^^^^^^^^^^ Avoid calling setState() directly within an effect
+  30 |     modelsApi
+  31 |       .versions(modelId)
+  32 |       .then((res) => setVersions(res.data))  react-hooks/set-state-in-effect
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/components/playback/PlaybackControls.tsx
+  166:40  error  Error: Cannot access refs during render
+
+React refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/components/playback/PlaybackControls.tsx:166:40
+  164 |
+  165 |         <span className="text-xs text-muted-foreground ml-auto">
+> 166 |           {loading ? 'Loading...' : `${frameRef.current}/${totalFrames}`}
+      |                                        ^^^^^^^^^^^^^^^^ Cannot access ref value during render
+  167 |         </span>
+  168 |       </div>
+  169 |  react-hooks/refs
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/components/sensors/SensorBindingPanel.tsx
+  61:14  error  'err' is defined but never used  @typescript-eslint/no-unused-vars
+  73:14  error  'err' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/components/ui/Toast.tsx
+   1:31  error  'useCallback' is defined but never used                                                                                         @typescript-eslint/no-unused-vars
+  21:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+  33:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+  39:14  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/pages/dashboard/DashboardPage.tsx
+  26:6  warning  React Hook useEffect has missing dependencies: 'fetchSensors', 'fetchTwins', and 'initWebSocket'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/pages/marketing/AboutPage.tsx
+  1:10  error  'Link' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/pages/marketing/ContactPage.tsx
+  1:10  error  'Link' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/pages/marketing/FeaturesPage.tsx
+  1:10  error  'Link' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/pages/models/ModelsPage.tsx
+    8:39  error  'Box' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         @typescript-eslint/no-unused-vars
+    8:82  error  'RotateCcw' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   @typescript-eslint/no-unused-vars
+   46:5   error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/pages/models/ModelsPage.tsx:46:5
+  44 |
+  45 |   useEffect(() => {
+> 46 |     fetchModels();
+     |     ^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  47 |   }, [fetchModels]);
+  48 |
+  49 |   const handleDelete = async () => {  react-hooks/set-state-in-effect
+  343:19  error  Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                @typescript-eslint/no-explicit-any
+  543:19  error  Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                @typescript-eslint/no-explicit-any
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/pages/sensors/SensorTestingPage.tsx
+   21:5   error    'overrideSensor' is assigned a value but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                @typescript-eslint/no-unused-vars
+   21:21  error    'clearOverride' is assigned a value but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 @typescript-eslint/no-unused-vars
+   21:36  error    'startStream' is assigned a value but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   @typescript-eslint/no-unused-vars
+   21:49  error    'stopStream' is assigned a value but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    @typescript-eslint/no-unused-vars
+   24:11  error    'twins' is assigned a value but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         @typescript-eslint/no-unused-vars
+   30:6   warning  React Hook useEffect has missing dependencies: 'fetchSensors', 'fetchTwins', and 'initWebSocket'. Either include them or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               react-hooks/exhaustive-deps
+   88:7   error    Expected an assignment or function call and instead saw an expression                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              @typescript-eslint/no-unused-expressions
+  136:21  error    'fetchSensors' is assigned a value but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  @typescript-eslint/no-unused-vars
+  153:7   error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/pages/sensors/SensorTestingPage.tsx:153:7
+  151 |   useEffect(() => {
+  152 |     if (realtime) {
+> 153 |       setChartHistory((prev) => {
+      |       ^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  154 |         const next = [...prev, { time: new Date().toLocaleTimeString(), value: realtime.value }];
+  155 |         return next.slice(-50);
+  156 |       });  react-hooks/set-state-in-effect
+  162:5   error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/pages/sensors/SensorTestingPage.tsx:162:5
+  160 |   // Reset chart on sensor change
+  161 |   useEffect(() => {
+> 162 |     setChartHistory([]);
+      |     ^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  163 |     setManualValue(sensor.manualValue ?? 50);
+  164 |     setSliderValue(sensor.manualValue ?? 50);
+  165 |   }, [sensor.id]);                            react-hooks/set-state-in-effect
+  165:6   warning  React Hook useEffect has a missing dependency: 'sensor.manualValue'. Either include it or remove the dependency array. If 'setManualValue' needs the current value of 'sensor.manualValue', you can also switch to useReducer instead of useState and read 'sensor.manualValue' in the reducer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     react-hooks/exhaustive-deps
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/pages/sensors/SensorsPage.tsx
+  35:6  warning  React Hook useEffect has missing dependencies: 'fetchSensors' and 'initWebSocket'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/pages/twins/TwinsPage.tsx
+  34:6  warning  React Hook useEffect has a missing dependency: 'fetchTwins'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/pages/viewer/ViewerPage.tsx
+  23:25  error  'setCollaborators' is assigned a value but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           @typescript-eslint/no-unused-vars
+  69:5   error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/pages/viewer/ViewerPage.tsx:69:5
+  67 |     fetchSensors();
+  68 |     initWebSocket();
+> 69 |     fetchModels();
+     |     ^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  70 |   }, [fetchModels, fetchSensors, initWebSocket]);
+  71 |
+  72 |   return (  react-hooks/set-state-in-effect
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/pages/viewer/components/AlertsPanel.tsx
+   2:10  error  'useSensorStore' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           @typescript-eslint/no-unused-vars
+  25:5   error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/pages/viewer/components/AlertsPanel.tsx:25:5
+  23 |   // We fetch unacknowledged alerts on mount
+  24 |   useEffect(() => {
+> 25 |     fetchAlerts();
+     |     ^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  26 |   }, []);
+  27 |
+  28 |   const handleAcknowledge = async (id: string) => {  react-hooks/set-state-in-effect
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/pages/viewer/components/KPIView.tsx
+  13:5   warning  Unused eslint-disable directive (no problems were reported from 'react-hooks/exhaustive-deps')
+  14:17  error    Error: Cannot call impure function during render
+
+`Date.now` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/pages/viewer/components/KPIView.tsx:14:17
+  12 |     const data = [];
+  13 |     // eslint-disable-next-line react-hooks/exhaustive-deps
+> 14 |     const now = Date.now();
+     |                 ^^^^^^^^^^ Cannot call impure function
+  15 |     for (let i = 20; i >= 0; i--) {
+  16 |       const time = new Date(now - i * 1000).toLocaleTimeString([], { minute: '2-digit', second: '2-digit' });
+  17 |       const point: Record<string, string | number> = { time };                                                                                    react-hooks/purity
+  21:9   warning  Unused eslint-disable directive (no problems were reported from 'react-hooks/exhaustive-deps')
+  22:24  error    Error: Cannot call impure function during render
+
+`Math.random` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/pages/viewer/components/KPIView.tsx:22:24
+  20 |         const currentVal = realtimeValues.get(sensor.id)?.value ?? 50;
+  21 |         // eslint-disable-next-line react-hooks/exhaustive-deps
+> 22 |         const noise = (Math.random() - 0.5) * 10;
+     |                        ^^^^^^^^^^^^^ Cannot call impure function
+  23 |         point[`sensor${index}`] = Math.max(0, Math.min(100, currentVal + noise));
+  24 |       });
+  25 |       data.push(point);                                                                                        react-hooks/purity
+  34:3   warning  Unused eslint-disable directive (no problems were reported from 'react-hooks/exhaustive-deps')
+  35:74  error    Error: Cannot call impure function during render
+
+`Date.now` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/pages/viewer/components/KPIView.tsx:35:74
+  33 |   // We'll consider any sensor that recently updated as an "active stream"
+  34 |   // eslint-disable-next-line react-hooks/exhaustive-deps
+> 35 |   const activeStreams = Array.from(realtimeValues.values()).filter(v => (Date.now() - new Date(v.timestamp).getTime()) < 5000).length;
+     |                                                                          ^^^^^^^^^^ Cannot call impure function
+  36 |
+  37 |   const colors = ['#3b82f6', '#10b981', '#f59e0b']; // Blue, Green, Yellow
+  38 |  react-hooks/purity
+
+/home/mainframe/Desktop/coding/projects/testingNebula/nebulaTwin/frontend/src/pages/viewer/components/SensorControlsPanel.tsx
+   1:20  error    'useEffect' is defined but never used                                                           @typescript-eslint/no-unused-vars
+  33:3   warning  Unused eslint-disable directive (no problems were reported from 'react-hooks/exhaustive-deps')
+
+✖ 58 problems (49 errors, 9 warnings)
+  0 errors and 4 warnings potentially fixable with the `--fix` option.
+

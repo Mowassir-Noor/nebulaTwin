@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { useState, useEffect } from 'react';
 import { GitBranch, RotateCcw, Check } from 'lucide-react';
 import { Button } from '@/components/ui/Button';

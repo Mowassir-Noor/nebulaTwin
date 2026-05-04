@@ -11,14 +11,14 @@ export default function LoginPage() {
   const [password, setPassword] = useState('admin123');
   const [error, setError] = useState('');
 
-  if (isAuthenticated) return <Navigate to="/" replace />;
+  if (isAuthenticated) return <Navigate to="/control" replace />;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     try {
       await login(email, password);
-      navigate('/');
+      navigate('/control');
     } catch {
       setError('Invalid email or password');
     }

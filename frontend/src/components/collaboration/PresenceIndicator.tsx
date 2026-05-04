@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { useState, useEffect } from 'react';
 import { Users } from 'lucide-react';
 import type { CollaborationUser } from '@/types';

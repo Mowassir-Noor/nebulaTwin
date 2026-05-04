@@ -32,7 +32,7 @@ export const useSensorStore = create<SensorState>((set, get) => ({
     try {
       const { data } = await sensorsApi.list();
       set({ sensors: data, isLoading: false });
-    } catch (err) {
+    } catch {
       set({ isLoading: false });
       toast.error('Failed to fetch sensors');
     }
@@ -45,8 +45,9 @@ export const useSensorStore = create<SensorState>((set, get) => ({
       await sensorsApi.override(id, value);
       toast.success(`Sensor overridden to ${value}`);
       await get().fetchSensors();
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'Failed to set override');
+    } catch (err) {
+      const error = err as { response?: { data?: { message?: string } } };
+      toast.error(error?.response?.data?.message || 'Failed to set override');
       throw err;
     }
   },
@@ -56,8 +57,9 @@ export const useSensorStore = create<SensorState>((set, get) => ({
       await sensorsApi.clearOverride(id);
       toast.success('Override cleared');
       await get().fetchSensors();
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'Failed to clear override');
+    } catch (err) {
+      const error = err as { response?: { data?: { message?: string } } };
+      toast.error(error?.response?.data?.message || 'Failed to clear override');
       throw err;
     }
   },
@@ -67,8 +69,9 @@ export const useSensorStore = create<SensorState>((set, get) => ({
       await sensorsApi.startStream(id, config);
       toast.success(`Stream started (${config.pattern})`);
       await get().fetchSensors();
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'Failed to start stream');
+    } catch (err) {
+      const error = err as { response?: { data?: { message?: string } } };
+      toast.error(error?.response?.data?.message || 'Failed to start stream');
       throw err;
     }
   },
@@ -78,8 +81,9 @@ export const useSensorStore = create<SensorState>((set, get) => ({
       await sensorsApi.stopStream(id);
       toast.success('Stream stopped');
       await get().fetchSensors();
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'Failed to stop stream');
+    } catch (err) {
+      const error = err as { response?: { data?: { message?: string } } };
+      toast.error(error?.response?.data?.message || 'Failed to stop stream');
       throw err;
     }
   },

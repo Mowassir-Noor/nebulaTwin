@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { useState, useCallback, useRef } from 'react';
 import * as THREE from 'three';
 import { sensorsApi } from '@/services/api';

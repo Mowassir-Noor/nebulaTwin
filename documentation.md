@@ -1,7 +1,7 @@
 # NebulaTwin Pro — Complete Documentation
 
 **Cloud-Based Digital Twin SaaS Platform**
-Version: 0.4.1 (3D Model & Sensor Binding Stabilization) | Last Updated: May 2026
+Version: 0.6.0 (Industrial Dashboard & Stability) | Last Updated: May 2026
 
 ---
 
@@ -44,7 +44,9 @@ Version: 0.4.1 (3D Model & Sensor Binding Stabilization) | Last Updated: May 202
 15. [3D Model Management (v0.3.0)](#15-3d-model-management-v030)
 16. [v0.4.0 — Intelligence, Collaboration & Safety](#16-v040--intelligence-collaboration--safety)
 17. [v0.4.1 — 3D Model & Sensor Binding Stabilization](#17-v041--3d-model--sensor-binding-stabilization)
-18. [Troubleshooting](#18-troubleshooting)
+18. [v0.5.0 — Marketing & Dashboard Integration](#18-v050--marketing--dashboard-integration)
+19. [v0.6.0 — Industrial Dashboard & Stability](#19-v060--industrial-dashboard--stability)
+20. [Troubleshooting](#20-troubleshooting)
 
 ---
 
@@ -139,6 +141,7 @@ The platform is **multi-tenant**, supports **RBAC** (Role-Based Access Control),
 | **TypeScript** | Language | ~6.0.2 |
 | **Vite** | Build tool | ^8.0.10 |
 | **Tailwind CSS** | Styling | ^4.2.4 |
+| **Framer Motion** | Animations | ^12.38.0 |
 | **Zustand** | State management | ^5.0.12 |
 | **TanStack Query** | Server state / caching | ^5.100.6 |
 | **Three.js** | 3D rendering engine | ^0.184.0 |
@@ -321,6 +324,7 @@ frontend/src/
 │   │
 │   ├── layout/
 │   │   ├── AppLayout.tsx         # Protected layout with sidebar + outlet
+│   │   ├── MarketingLayout.tsx   # Public marketing layout (header/footer) (v0.5.0)
 │   │   └── Sidebar.tsx           # Navigation sidebar with icons
 │   ├── 3d/
 │   │   ├── SceneViewer.tsx       # Three.js canvas + SceneDragDrop wrapper + SceneCapture (updated v0.4.0)
@@ -337,6 +341,7 @@ frontend/src/
 │       └── PresenceIndicator.tsx # Active collaborator avatars (v0.4.0)
 │
 └── pages/
+    ├── marketing/                # Public pages (Landing, Features, About, Contact, Pricing) (v0.5.0)
     ├── auth/
     │   └── LoginPage.tsx         # Login form + Google OAuth button
     ├── dashboard/
@@ -1706,7 +1711,40 @@ Focused production-grade hardening of the 3D upload pipeline, mesh parsing, sens
 
 ---
 
-## 18. Troubleshooting
+## 18. v0.5.0 — Marketing & Dashboard Integration
+
+**Summary:** The v0.5.0 update unifies the public-facing marketing interface with the authenticated SaaS dashboard. It transitions the application from a pure dashboard to a complete product platform with an integrated "Kinetic Glass" design system.
+
+### 18.1 Key Features
+
+- **Public Marketing Site:** Integrated high-conversion landing pages including Home (`/`), Features (`/features`), About (`/about`), Contact (`/contact`), and Pricing (`/pricing`).
+- **Unified Routing:** Re-architected `App.tsx` using `react-router-dom`:
+  - `MarketingLayout`: Wraps all public routes with a distinct header (login/signup CTAs) and a global footer.
+  - `AppLayout`: Wraps all authenticated dashboard routes under a new base path (`/control`).
+- **Premium Design System ("Kinetic Glass"):** Replaced standard Tailwind defaults with a futuristic dark theme utilizing complex radial gradients, deep blurred glass (`oklch` colors), and custom glows.
+- **Micro-Animations:** Implemented seamless scroll reveals and hover interactions across marketing content using Framer Motion.
+- **Frictionless Auth Transitions:** Users who authenticate successfully are now securely routed from the landing page directly into the `/control` dashboard interface.
+
+### 18.2 Frontend Dependencies
+- Added `framer-motion` for advanced compositional animations.
+- Added `tw-animate-css` utility classes for declarative CSS transitions required by the new theme.
+
+---
+
+## 19. v0.6.0 — Industrial Dashboard & Stability
+
+The v0.6.0 update introduces a major overhaul of the 3D Viewer into a professional, industrial-grade 3-panel dashboard (Siemens / IBM / Azure Digital Twins level UI) and resolves accumulated technical debt to ensure strict TypeScript compliance.
+
+### 19.1 Key Enhancements
+- **3-Panel Industrial Dashboard (`DashboardShell`)**: Restructured the 3D viewer into an immersive layout comprising a `LeftSidebar` (Asset Tree & Overviews), a central `SceneViewer` with real-time 3D model interaction, and a `RightPanel` / `ControlSidebar` (Sensor Controls, KPI charts, and active alerts).
+- **Kinetic Glass Aesthetic**: Applied a premium dark mode, glassmorphism design language using complex gradients and tailwind utilities (`bg-gray-900/50 backdrop-blur-md border border-white/10`) to provide a futuristic UI experience.
+- **3D HTML Labels & Camera Lerping**: Integrated real-time 3D HTML overlays (via `@react-three/drei`) directly onto the 3D meshes for live sensor value monitoring, and implemented smooth camera lerping logic triggered by model part focus events (`focusOnModelPart`).
+- **Strict TypeScript Compliance**: Addressed critical typing issues and resolved implicit `any` definitions. Fixed severe type mismatches within the `Badge` variant properties, array typings in `RightPanel`, `AlertSeverity` matchings, and `StartStreamConfig` parameter naming inconsistencies.
+- **Cleaned Technical Debt**: Resolved legacy `useEffect` dependency warnings and impure function violations, leveraging systematic refactoring to ensure robust production build stability without compromising features.
+
+---
+
+## 20. Troubleshooting
 
 ### Port conflicts
 ```bash

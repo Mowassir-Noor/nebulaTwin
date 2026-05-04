@@ -2,7 +2,7 @@
 
 **Cloud-based Digital Twin SaaS Platform** — Full-stack NestJS + React application for industrial IoT monitoring, 3D visualization, and real-time sensor management.
 
-**Version:** 0.4.0 (Models + Collaboration)
+**Version:** 0.4.1 (3D Model & Sensor Binding Stabilization)
 
 ## Tech Stack
 
@@ -10,7 +10,7 @@
 
 **Frontend:** React 19, Vite, Tailwind CSS, Zustand, TanStack Query, Three.js, Recharts, Socket.IO Client
 
-**3D Models:** Upload, version, rollback, and bind sensors to GLB / GLTF / OBJ models in the browser.
+**3D Models:** Upload, version, rollback, and bind sensors to **GLB / GLTF** models in the browser. Sensor binding uses stable `modelPartId` UUIDs with index-based fallback.
 
 **Infrastructure:** Docker Compose, NGINX, Node.js 20
 
@@ -24,6 +24,8 @@
 ```bash
 docker-compose up -d postgres redis kafka mosquitto
 ```
+
+The local Postgres service is exposed on `localhost:5433` with `nebulaTwin` / `nebulaTwin` credentials.
 
 ### 2. Install Dependencies
 ```bash
@@ -54,7 +56,8 @@ cd frontend && npm run dev
 - **Health:** http://localhost:3000/api/v1/health
 
 ### 3D Model Viewer Notes
-- Supported upload formats: `.glb`, `.gltf`, `.obj`
+- Supported upload formats: `.glb`, `.gltf` **only** — OBJ is rejected
+- Sensor binding always uses `modelPartId` UUID; index-based fallback handles mesh name mismatches
 - Model files are served from `/uploads` by the backend
 - In frontend dev, `vite.config.ts` proxies `/uploads` to `http://localhost:3000`
 - If the viewer shows a blank panel, verify the model URL returns the file content and not HTML
@@ -114,6 +117,8 @@ docker-compose up -d
 - `POST /models` — Upload a model with `file` + `twinId`
 - `POST /models/:id/version` — Upload a new version
 - `GET /models` · `GET /models/:id` · `GET /models/:id/versions`
+- `GET /models/:id/parts` — Parts sorted by index *(v0.4.1)*
+- `GET /models/:id/bindings` — All sensor bindings for a model *(v0.4.1)*
 - `POST /models/:id/rollback` · `PATCH /models/:id` · `DELETE /models/:id`
 - `POST /models/:id/restore` · `DELETE /models/:id/permanent`
 - `GET /models/:id/bound-sensors` — Count bound sensors

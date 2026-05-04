@@ -78,6 +78,18 @@ export class ModelsController {
     return this.modelsService.findById(id, user.tenantId);
   }
 
+  @Get(':id/parts')
+  @ApiOperation({ summary: 'Get all model parts sorted by index' })
+  async getModelParts(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.modelsService.getModelParts(id, user.tenantId);
+  }
+
+  @Get(':id/bindings')
+  @ApiOperation({ summary: 'Get all sensor bindings for a model' })
+  async getModelBindings(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.modelsService.getModelBindings(id, user.tenantId);
+  }
+
   @Get(':id/bound-sensors')
   @ApiOperation({ summary: 'Get count of sensors bound to this model' })
   async getBoundSensors(@Param('id') id: string, @CurrentUser() user: JwtPayload) {

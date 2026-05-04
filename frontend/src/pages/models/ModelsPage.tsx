@@ -40,13 +40,11 @@ export default function ModelsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [showDeleted]);
 
   useEffect(() => {
     fetchModels();
-  }, [fetchModels, showDeleted]);
-
-  useEffect(() => { fetchModels(); }, [showDeleted]);
+  }, [fetchModels]);
 
   const handleDelete = async () => {
     if (!deletingModel) return;

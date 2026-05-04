@@ -146,16 +146,26 @@ export class SensorsService {
 
   // ─── Bind sensor to model part ─────────────────────────────
   async bindToModelPart(sensorId: string, modelPartId: string, tenantId: string) {
-    await this.findById(sensorId, tenantId);
+    const sensor = await this.findById(sensorId, tenantId);
 
-    // Validate model part exists and belongs to tenant's model
+    // Validate model part exists, belongs to tenant's model
     const part = await this.prisma.modelPart.findUnique({
       where: { id: modelPartId },
-      include: { model: true },
+      include: { model: { include: { twin: true } } },
     });
-    if (!part) throw new NotFoundException('Model part not found');
-    if (part.model.tenantId !== tenantId) {
+    if (!part || part.model.tenantId !== tenantId) {
       throw new NotFoundException('Model part not found');
+    }
+
+    // Enforce twin-scoped integrity: if the sensor has an asset, it must belong
+    // to the same twin as the model being bound to
+    if (sensor.assetId) {
+      const asset = await this.prisma.asset.findUnique({ where: { id: sensor.assetId } });
+      if (asset && asset.twinId !== part.model.twinId) {
+        throw new BadRequestException(
+          'Sensor belongs to a different twin than the target model part',
+        );
+      }
     }
 
     return this.prisma.sensor.update({

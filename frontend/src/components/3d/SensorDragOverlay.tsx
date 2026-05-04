@@ -1,22 +1,12 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import * as THREE from 'three';
 import { sensorsApi } from '@/services/api';
 import { useSensorStore } from '@/store/sensorStore';
 import { toast } from '@/components/ui/Toast';
 
-/**
- * HTML overlay wrapping the 3D canvas that intercepts drag events.
- * On drop, it resolves the sensorId from dataTransfer and the target
- * modelPartId from the mesh name stored during dragOver raycasting,
- * then calls sensorsApi.bind().
- *
- * The SceneViewer stores a ref to its Three.js scene + camera so this
- * overlay can raycast during dragOver to highlight meshes.
- */
-
 interface SceneDragDropProps {
   children: React.ReactNode;
-  /** meshName → modelPartId mapping from the loaded model */
+  /** meshName → modelPartId (primary) + meshIndex → modelPartId (fallback) */
   partMap: Map<string, string>;
   /** ref to the Three.js objects needed for raycasting (set by SceneViewer) */
   sceneRef: React.RefObject<{
@@ -26,12 +16,43 @@ interface SceneDragDropProps {
   } | null>;
 }
 
+function clearSceneHighlights(scene: THREE.Scene) {
+  scene.traverse((obj) => {
+    if ((obj as THREE.Mesh).isMesh) {
+      const mats = Array.isArray((obj as THREE.Mesh).material)
+        ? ((obj as THREE.Mesh).material as THREE.Material[])
+        : [(obj as THREE.Mesh).material as THREE.Material];
+      for (const m of mats) {
+        const mat = m as THREE.MeshStandardMaterial;
+        if (mat.emissive) {
+          mat.emissive.setHex(0x000000);
+          mat.emissiveIntensity = 0;
+        }
+      }
+    }
+  });
+}
+
 export function SceneDragDrop({ children, partMap, sceneRef }: SceneDragDropProps) {
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [dropTargetName, setDropTargetName] = useState<string | null>(null);
   const fetchSensors = useSensorStore((s) => s.fetchSensors);
 
-  // Raycast to find mesh under cursor
+  // Debounce dragOver raycasting — only run every 50ms
+  const lastRaycastTs = useRef(0);
+  const lastHitRef = useRef<{ meshName: string; modelPartId: string } | null>(null);
+
+  // Build indexed meshes array once per scene for index-based fallback
+  const getIndexedMeshes = useCallback((): THREE.Mesh[] => {
+    const refs = sceneRef.current;
+    if (!refs?.scene) return [];
+    const found: THREE.Mesh[] = [];
+    refs.scene.traverse((obj) => {
+      if ((obj as THREE.Mesh).isMesh) found.push(obj as THREE.Mesh);
+    });
+    return found;
+  }, [sceneRef]);
+
   const raycastAtEvent = useCallback(
     (e: React.DragEvent): { meshName: string; modelPartId: string } | null => {
       const refs = sceneRef.current;
@@ -47,18 +68,28 @@ export function SceneDragDrop({ children, partMap, sceneRef }: SceneDragDropProp
       raycaster.setFromCamera(mouse, refs.camera);
       const intersects = raycaster.intersectObjects(refs.scene.children, true);
 
+      const indexedMeshes = getIndexedMeshes();
+
       for (const hit of intersects) {
-        const mesh = hit.object;
-        if ((mesh as THREE.Mesh).isMesh && mesh.name) {
+        const mesh = hit.object as THREE.Mesh;
+        if (!mesh.isMesh) continue;
+
+        // Primary: name-based lookup
+        if (mesh.name) {
           const partId = partMap.get(mesh.name);
-          if (partId) {
-            return { meshName: mesh.name, modelPartId: partId };
-          }
+          if (partId) return { meshName: mesh.name, modelPartId: partId };
+        }
+
+        // Fallback: index-based lookup
+        const idx = indexedMeshes.indexOf(mesh);
+        if (idx !== -1) {
+          const partId = partMap.get(`__idx_${idx}`);
+          if (partId) return { meshName: mesh.name || `part_${idx}`, modelPartId: partId };
         }
       }
       return null;
     },
-    [partMap, sceneRef],
+    [partMap, sceneRef, getIndexedMeshes],
   );
 
   const handleDragOver = useCallback(
@@ -67,26 +98,29 @@ export function SceneDragDrop({ children, partMap, sceneRef }: SceneDragDropProp
       e.dataTransfer.dropEffect = 'link';
       setIsDraggingOver(true);
 
+      // Debounce: skip raycast if called too recently
+      const now = Date.now();
+      if (now - lastRaycastTs.current < 50) return;
+      lastRaycastTs.current = now;
+
       const hit = raycastAtEvent(e);
+      lastHitRef.current = hit;
       setDropTargetName(hit?.meshName ?? null);
 
-      // Highlight the hit mesh (emissive glow)
       const refs = sceneRef.current;
       if (refs?.scene) {
-        refs.scene.traverse((obj) => {
-          if ((obj as THREE.Mesh).isMesh) {
-            const mat = (obj as THREE.Mesh).material as THREE.MeshStandardMaterial;
-            if (mat.emissive) {
-              if (hit && obj.name === hit.meshName) {
+        clearSceneHighlights(refs.scene);
+        if (hit) {
+          refs.scene.traverse((obj) => {
+            if ((obj as THREE.Mesh).isMesh && obj.name === hit.meshName) {
+              const mat = (obj as THREE.Mesh).material as THREE.MeshStandardMaterial;
+              if (mat?.emissive) {
                 mat.emissive.setHex(0x3b82f6);
                 mat.emissiveIntensity = 0.35;
-              } else {
-                mat.emissive.setHex(0x000000);
-                mat.emissiveIntensity = 0;
               }
             }
-          }
-        });
+          });
+        }
       }
     },
     [raycastAtEvent, sceneRef],
@@ -95,19 +129,9 @@ export function SceneDragDrop({ children, partMap, sceneRef }: SceneDragDropProp
   const handleDragLeave = useCallback(() => {
     setIsDraggingOver(false);
     setDropTargetName(null);
-    // Clear all highlights
+    lastHitRef.current = null;
     const refs = sceneRef.current;
-    if (refs?.scene) {
-      refs.scene.traverse((obj) => {
-        if ((obj as THREE.Mesh).isMesh) {
-          const mat = (obj as THREE.Mesh).material as THREE.MeshStandardMaterial;
-          if (mat.emissive) {
-            mat.emissive.setHex(0x000000);
-            mat.emissiveIntensity = 0;
-          }
-        }
-      });
-    }
+    if (refs?.scene) clearSceneHighlights(refs.scene);
   }, [sceneRef]);
 
   const handleDrop = useCallback(
@@ -119,10 +143,14 @@ export function SceneDragDrop({ children, partMap, sceneRef }: SceneDragDropProp
       const sensorId = e.dataTransfer.getData('sensorId');
       if (!sensorId) return;
 
-      // Raycast to find drop target
-      const hit = raycastAtEvent(e);
+      // Use cached last hit to avoid re-raycasting on drop
+      const hit = lastHitRef.current ?? raycastAtEvent(e);
+      lastHitRef.current = null;
+
       if (!hit) {
         toast.error('Drop on a model mesh to bind the sensor');
+        const refs = sceneRef.current;
+        if (refs?.scene) clearSceneHighlights(refs.scene);
         return;
       }
 
@@ -130,14 +158,16 @@ export function SceneDragDrop({ children, partMap, sceneRef }: SceneDragDropProp
         await sensorsApi.bind(sensorId, hit.modelPartId);
         toast.success(`Sensor bound to "${hit.meshName}"`);
         await fetchSensors();
-      } catch {
-        toast.error('Failed to bind sensor to mesh');
+      } catch (err: unknown) {
+        const msg =
+          (err as any)?.response?.data?.message ?? 'Failed to bind sensor to mesh';
+        toast.error(msg);
       }
 
-      // Clear highlights
-      handleDragLeave();
+      const refs = sceneRef.current;
+      if (refs?.scene) clearSceneHighlights(refs.scene);
     },
-    [raycastAtEvent, fetchSensors, handleDragLeave],
+    [raycastAtEvent, fetchSensors, sceneRef],
   );
 
   return (

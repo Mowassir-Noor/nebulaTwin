@@ -10,7 +10,11 @@ import { sensorsApi } from '@/services/api';
 import { toast } from '@/components/ui/Toast';
 import { DraggableSensorChip } from '@/components/3d/SensorDragOverlay';
 
-export function SensorBindingPanel() {
+interface SensorBindingPanelProps {
+  activeTwinId?: string;
+}
+
+export function SensorBindingPanel({ activeTwinId }: SensorBindingPanelProps = {}) {
   const selectedMeshName = useViewerStore((s) => s.selectedMeshName);
   const selectedModelPartId = useViewerStore((s) => s.selectedModelPartId);
   const clearSelection = useViewerStore((s) => s.clearSelection);
@@ -23,15 +27,19 @@ export function SensorBindingPanel() {
 
   if (!selectedMeshName) return null;
 
-  // Find sensors bound to this model part or mesh name
+  // Find sensors bound to the selected model part (scoped to active model only)
   const boundSensors = sensors.filter(
     (s) =>
       (selectedModelPartId && s.modelPartId === selectedModelPartId) ||
-      (s.modelPart?.name === selectedMeshName),
+      (!selectedModelPartId && s.modelPart?.name === selectedMeshName),
   );
 
-  // Unbound sensors available for binding
-  const unboundSensors = sensors.filter((s) => !s.modelPartId);
+  // Unbound sensors scoped to the active model's twin to prevent cross-model binding
+  const unboundSensors = sensors.filter(
+    (s) =>
+      !s.modelPartId &&
+      (!activeTwinId || !s.assetId || s.asset?.twinId === activeTwinId),
+  );
 
   const handleCreateAndBind = async () => {
     if (!sensorName.trim()) return;

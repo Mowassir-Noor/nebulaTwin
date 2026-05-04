@@ -1,7 +1,7 @@
 # NebulaTwin Pro — Complete Documentation
 
 **Cloud-Based Digital Twin SaaS Platform**
-Version: 0.4.0 (Intelligence, Collaboration & Safety) | Last Updated: May 2026
+Version: 0.4.1 (3D Model & Sensor Binding Stabilization) | Last Updated: May 2026
 
 ---
 
@@ -43,7 +43,8 @@ Version: 0.4.0 (Intelligence, Collaboration & Safety) | Last Updated: May 2026
 14. [Testing](#14-testing)
 15. [3D Model Management (v0.3.0)](#15-3d-model-management-v030)
 16. [v0.4.0 — Intelligence, Collaboration & Safety](#16-v040--intelligence-collaboration--safety)
-17. [Troubleshooting](#17-troubleshooting)
+17. [v0.4.1 — 3D Model & Sensor Binding Stabilization](#17-v041--3d-model--sensor-binding-stabilization)
+18. [Troubleshooting](#18-troubleshooting)
 
 ---
 
@@ -52,7 +53,7 @@ Version: 0.4.0 (Intelligence, Collaboration & Safety) | Last Updated: May 2026
 **NebulaTwin Pro** is a full-stack, cloud-based Digital Twin SaaS platform. It allows industrial users to:
 
 - Create and manage **digital twins** of physical assets (factories, production lines, machines, components)
-- Upload and interact with **3D models** in the browser, with **versioning and rollback** **(v0.4.0)**
+- Upload and interact with **3D models** (GLB/GLTF) in the browser, with **versioning, rollback, and stable sensor binding** by `modelPartId` with index-based fallback **(updated v0.4.1)**
 - Attach **sensors** to machine parts via click-to-bind or **drag-and-drop** onto 3D meshes **(v0.4.0)**
 - **Simulate sensor data** with configurable patterns (sine, random, linear, constant)
 - **Manually override** sensor values for testing
@@ -393,7 +394,7 @@ frontend/src/
 | `digital_twins` | Digital twin definitions | id, name, description, tenantId |
 | `assets` | Hierarchical asset tree | id, name, type (FACTORY/LINE/MACHINE/COMPONENT), twinId, parentId |
 | `models_3d` | 3D model files | id, name, description, fileUrl, format (ModelFormat enum), sizeBytes, meshStructure, twinId, **tenantId**, **version**, **isLatest**, **parentModelId**, **deletedAt** **(v0.4.0)** |
-| `model_parts` | Individual mesh parts of 3D models | id, name, modelId, metadata |
+| `model_parts` | Individual mesh parts of 3D models | id, name, **index**, modelId, **positionOffset**, **rotationOffset**, metadata **(v0.4.1)** |
 | `sensors` | Sensor definitions + control state | id, name, type, unit, mode, manualValue, stream*, assetId, modelPartId, tenantId, **alertCooldownMs**, **alertHysteresis**, **validationSchema** **(v0.4.0)** |
 | `audit_logs` | Activity audit trail | id, action, entity, entityId, details, userId, tenantId |
 
@@ -415,7 +416,7 @@ frontend/src/
 | `SensorMode` | REAL, MANUAL, **STREAM** |
 | `AssetType` | FACTORY, LINE, MACHINE, COMPONENT |
 | `StreamPattern` | CONSTANT, LINEAR_INCREASE, LINEAR_DECREASE, SINE, RANDOM |
-| `ModelFormat` | GLTF, GLB, OBJ **(v0.4.0)** |
+| `ModelFormat` | GLTF, GLB *(OBJ removed from accepted uploads in v0.4.1)* |
 | `AlertSeverity` | **INFO** **(v0.4.0)**, WARNING, CRITICAL |
 
 #### Alert Model (new in v0.2.0)
@@ -547,14 +548,16 @@ Base URL: `/api/v1`
 }
 ```
 
-#### 3D Models (v0.3.0, updated v0.4.0)
+#### 3D Models (v0.3.0, updated v0.4.0, v0.4.1)
 | Method | Path | Auth | Roles | Description |
 |---|---|---|---|---|
 | POST | `/models` | JWT | ADMIN, MANAGER | Upload 3D model file (multipart/form-data) |
 | GET | `/models` | JWT | Any | List models (filter by `?twinId=`, `?includeDeleted=true`) **(v0.4.0)** |
-| GET | `/models/:id` | JWT | Any | Get model with parts and sensors |
+| GET | `/models/:id` | JWT | Any | Get model with parts sorted by index and sensors |
 | PATCH | `/models/:id` | JWT | ADMIN, MANAGER | Update model name/description |
-| DELETE | `/models/:id` | JWT | ADMIN, MANAGER | **Soft delete** model (sets `deletedAt`) **(v0.4.0)** |
+| DELETE | `/models/:id` | JWT | ADMIN, MANAGER | **Soft delete** model — auto-unbinds all sensors **(updated v0.4.1)** |
+| GET | `/models/:id/parts` | JWT | Any | Get all model parts sorted by index **(v0.4.1)** |
+| GET | `/models/:id/bindings` | JWT | Any | Get all sensor bindings for a model **(v0.4.1)** |
 | GET | `/models/:id/bound-sensors` | JWT | Any | Count sensors bound to model parts |
 | POST | `/models/:id/version` | JWT | ADMIN, MANAGER | Upload new version of model (multipart/form-data) **(v0.4.0)** |
 | GET | `/models/:id/versions` | JWT | Any | Get version history for model lineage **(v0.4.0)** |
@@ -565,7 +568,7 @@ Base URL: `/api/v1`
 **Upload Request (multipart/form-data):**
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `file` | File | Yes | 3D model file (.glb, .gltf, .obj) |
+| `file` | File | Yes | 3D model file (`.glb` or `.gltf` only — OBJ not accepted) |
 | `twinId` | String | Yes | Digital twin to associate with |
 | `name` | String | No | Model name (defaults to filename) |
 | `description` | String | No | Model description |
@@ -581,17 +584,19 @@ Base URL: `/api/v1`
   "twinId": "twin-uuid",
   "tenantId": "tenant-uuid",
   "modelParts": [
-    { "id": "part-uuid", "name": "Motor_Housing", "modelId": "uuid" },
-    { "id": "part-uuid", "name": "Conveyor_Belt", "modelId": "uuid" }
+    { "id": "part-uuid", "name": "Motor_Housing", "index": 0, "modelId": "uuid" },
+    { "id": "part-uuid", "name": "Conveyor_Belt", "index": 1, "modelId": "uuid" }
   ]
 }
 ```
 
-**File validation:** Allowed extensions: `.glb`, `.gltf`, `.obj`. Max size: 100MB (configurable via `MAX_FILE_SIZE`).
+**File validation:** Allowed extensions: `.glb`, `.gltf` **only** (OBJ rejected since v0.4.1). Max size: 100MB (configurable via `MAX_FILE_SIZE`).
 
-**Mesh parsing:** On upload, GLTF/GLB files are parsed to extract mesh names. Each unique mesh becomes a `ModelPart` with a UUID, enabling sensor binding by `modelPartId`.
+**Mesh parsing (v0.4.1):** On upload, GLTF/GLB files are parsed by walking the node tree in scene order. Each mesh gets a `ModelPart` with a UUID and a stable `index`. If a mesh name is missing or duplicated, a deterministic `part_{index}` name is generated. `modelParts` are always returned sorted by `index`.
 
-**Cascade delete:** Deleting a model unbinds all sensors from its parts, removes the file from disk, and deletes the model + parts from the database.
+**Soft delete unbind (v0.4.1):** `DELETE /models/:id` (soft delete) automatically unbinds all sensors from the model's parts before marking the model deleted.
+
+**Permanent delete:** `DELETE /models/:id/permanent` (ADMIN only) unbinds sensors, removes the file from disk, and hard-deletes the model + parts from the database.
 
 #### Ingestion
 | Method | Path | Auth | Description |
@@ -866,24 +871,23 @@ These endpoints are **unauthenticated** for use by container orchestrators.
 
 **Upload Pipeline:**
 ```
-User uploads a supported model file (.glb, .gltf, or .obj) via POST /models (multipart/form-data)
-  → ModelsController validates file type and size
+User uploads a .glb or .gltf file via POST /models (multipart/form-data)
+  → ModelsController validates file type (.glb/.gltf only) and size
   → ModelsService.uploadModel()
     → Validates twin belongs to tenant
     → Saves file to ./uploads/models/{uuid}.{ext}
-    → Parses GLTF/GLB to extract mesh names
-    → Creates Model3D + ModelPart records in transaction
-    → Returns model with parts (each part has UUID for binding)
+    → Parses GLTF/GLB node tree to extract mesh names with dedup fallback
+    → Creates Model3D + ModelPart records in transaction (each part stores index)
+    → Returns model with parts sorted by index (each part has UUID for binding)
 ```
 
-**Supported Formats:**
+**Supported Formats (v0.4.1):**
 | Format | Extension | Mesh Parsing |
 |---|---|---|
-| glTF Binary | `.glb` | Yes — extracts mesh names from binary JSON chunk |
-| glTF | `.gltf` | Yes — parses JSON to extract mesh node names |
-| Wavefront OBJ | `.obj` | Yes — loads geometry as a single part when mesh names are unavailable |
+| glTF Binary | `.glb` | Yes — extracts mesh names from binary JSON chunk; index-based dedup fallback |
+| glTF | `.gltf` | Yes — parses JSON to extract mesh node names; index-based dedup fallback |
 
-> FBX uploads are no longer supported. Use GLB, GLTF, or OBJ files for reliable viewer rendering.
+> OBJ and FBX formats are **not supported**. Only `.glb` and `.gltf` are accepted.
 
 **File Storage:**
 - Default: local disk at `./uploads/models/`
@@ -895,11 +899,16 @@ User uploads a supported model file (.glb, .gltf, or .obj) via POST /models (mul
 - In-memory cache with 60-second TTL for model list and detail queries
 - Automatically invalidated on upload, update, and delete operations
 
-**Sensor Binding by Model Part UUID:**
-- Each mesh in an uploaded model gets a `ModelPart` record with a UUID
-- Sensors bind to `modelPartId` (not mesh name), ensuring stable references
-- `bindToModelPart` validates that the model part belongs to the tenant
-- On model delete, all bound sensors are unbound before deletion
+**Sensor Binding by Model Part UUID (v0.4.1):**
+- Each mesh gets a `ModelPart` with a UUID and a stable `index` field
+- Sensors bind to `modelPartId` **only** — never to mesh name directly
+- `bindToModelPart` validates:
+  1. Sensor belongs to tenant
+  2. Model part belongs to tenant's model
+  3. If the sensor has an `assetId`, its asset's `twinId` must match the model's `twinId` (twin-scoped safety)
+- On **soft delete**, all bound sensors are automatically unbound
+- `GET /models/:id/parts` returns parts sorted by `index`
+- `GET /models/:id/bindings` returns all sensors currently bound to the model's parts
 
 **Database Indexes:**
 - `@@index([twinId])` — fast queries by twin
@@ -996,8 +1005,8 @@ Pages are **lazy-loaded** via `React.lazy()` for performance.
   - **Color coding:** green (normal, <60), yellow (warning, 60-80), red (critical, >80)
   - **Selection highlight:** purple glow when clicked
 
-- **UploadedModel** — Dynamic 3D model loader using GLTFLoader/OBJLoader. Auto-centers and scales models. Maps mesh names to ModelPart UUIDs. Color-codes meshes by sensor value (green/yellow/red). Highlights selected mesh **(v0.3.0)**
-- **SensorDragOverlay** — `SceneDragDrop`: HTML wrapper around canvas that handles dragOver/drop events; raycasts into the Three.js scene to find the mesh under cursor; highlights target mesh with blue emissive glow; on drop calls `sensorsApi.bind()`. `DraggableSensorChip`: draggable chip that puts `sensorId` into `dataTransfer` **(v0.4.0)**
+- **UploadedModel** — Dynamic 3D model loader using `GLTFLoader` (GLB/GLTF only — OBJ/FBX removed). Builds a **dual partMap**: `byName` (mesh name → modelPartId) and `byIndex` (mesh index → modelPartId). Falls back to index-based resolution when runtime mesh names don't match parsed names. Auto-centers and scales models. Color-codes meshes by sensor value (green/yellow/red). Highlights selected (purple) and hovered (blue) meshes **(updated v0.4.1)**
+- **SensorDragOverlay** — `SceneDragDrop`: HTML wrapper around canvas that handles dragOver/drop events with **50ms debounced raycasting**. Raycasts into the Three.js scene to find the mesh under cursor; tries name-based lookup then index-based fallback. Highlights target mesh with blue emissive glow; caches last hit to avoid double-raycast on drop. On drop calls `sensorsApi.bind()`; shows backend error message on failure. Handles multi-material meshes correctly. `DraggableSensorChip`: draggable chip that puts `sensorId` into `dataTransfer` **(updated v0.4.1)**
 
 #### Sensor Components (`components/sensors/`)
 - **SensorBindingPanel** — Appears when a mesh/part is selected. Shows bound sensors with live values and unbind button. Bind Existing Sensor dropdown. **Drag to 3D Model** section with `DraggableSensorChip` for each unbound sensor. Create & Bind form **(updated v0.4.0)**
@@ -1068,6 +1077,7 @@ Four **Zustand** stores:
 - Organized into namespaces: `authApi`, `twinsApi`, `assetsApi`, `sensorsApi`, `ingestApi`, `analyticsApi`, `alertsApi`, `healthApi`, `modelsApi`, `exportApi` **(v0.4.0)**
 - **v0.3.0:** `modelsApi` — list, get, upload, update, delete, boundSensors
 - **v0.4.0:** `modelsApi` extended — `uploadVersion()`, `getVersions()`, `rollback()`, `restore()`, `permanentDelete()`
+- **v0.4.1:** `modelsApi` extended — `parts(id)`, `bindings(id)`
 - **v0.4.0:** `exportApi` — `sensorCsv()`, `twinJson()`, `createShareLink()`, `getShared()`, `revokeShare()`
 - **v0.2.0:** Automatic retry on 5xx errors for GET requests (1 retry, 1s delay)
 
@@ -1658,7 +1668,45 @@ User drags DraggableSensorChip from sidebar
 
 ---
 
-## 17. Troubleshooting
+## 17. v0.4.1 — 3D Model & Sensor Binding Stabilization
+
+Focused production-grade hardening of the 3D upload pipeline, mesh parsing, sensor binding integrity, and viewer interaction.
+
+### 17.1 Backend
+
+| Area | Change |
+|---|---|
+| **OBJ removed** | Upload endpoint rejects `.obj` files — only `.glb` and `.gltf` accepted |
+| **Robust mesh parsing** | Node-tree traversal in scene order; deduplicates repeated names with `_{index}` suffix; deterministic `part_{N}` fallback for unnamed meshes |
+| **ModelPart `index` field** | Each `ModelPart` stores its `index` (scene traversal order) for stable frontend mapping |
+| **ModelPart offset fields** | `positionOffset` and `rotationOffset` (JSON) stored for future mesh offset metadata |
+| **Sorted parts** | All queries returning model parts now `orderBy: { index: 'asc' }` |
+| **Soft-delete unbind** | `DELETE /models/:id` automatically unbinds all sensors from the model's parts before setting `deletedAt` |
+| **Twin-scoped bind safety** | `bindToModelPart` enforces: sensor's asset `twinId` must match model's `twinId` — cross-twin bindings rejected with `400 Bad Request` |
+| **New endpoints** | `GET /models/:id/parts` — sorted parts list; `GET /models/:id/bindings` — all bound sensors with part info |
+
+### 17.2 Frontend
+
+| Area | Change |
+|---|---|
+| **OBJLoader / FBXLoader removed** | `UploadedModel.tsx` only uses `GLTFLoader`; unsupported formats throw a clear error |
+| **Dual partMap** | `ModelScene` builds both `byName` (mesh name → partId) and `byIndex` (traversal index → partId) maps |
+| **Index-based fallback** | `resolvePartId(mesh, index)` tries name first, falls back to index — handles models where runtime names differ from parsed names |
+| **Mismatch warning** | Console warns when mesh names don't match backend parts — aids debugging without crashing |
+| **Debounced raycasting** | `SceneDragDrop.handleDragOver` throttled to max 1 raycast per 50ms — prevents frame-rate degradation on slow machines |
+| **Cached drop hit** | Last raycast hit stored in `lastHitRef` — reused on `drop` event, avoids double-raycast |
+| **Multi-material highlight** | `clearSceneHighlights` correctly handles meshes with array materials |
+| **Backend error in toast** | Drop failures surface the backend's error message (e.g. cross-twin binding rejection) instead of a generic string |
+| **SceneViewer dual partMap** | `partMap` passed to `SceneDragDrop` includes both `name` keys and `__idx_{N}` keys so the drag fallback resolves correctly |
+| **`modelsApi.parts()` / `.bindings()`** | Two new API helper functions for the new backend endpoints |
+
+### 17.3 Schema Changes (v0.4.1)
+
+**ModelPart** — added: `index` (Int, default 0), `positionOffset` (Json?), `rotationOffset` (Json?)
+
+---
+
+## 18. Troubleshooting
 
 ### Port conflicts
 ```bash
@@ -1697,4 +1745,4 @@ If the browser console logs `Unexpected line: "<!doctype html>"` or the viewer s
 
 ---
 
-*NebulaTwin Pro v0.4.0 — Built with NestJS, React, Three.js, TimescaleDB, Redis, Kafka, and MQTT.*
+*NebulaTwin Pro v0.4.1 — Built with NestJS, React, Three.js, TimescaleDB, Redis, Kafka, and MQTT.*

@@ -1,12 +1,11 @@
-import { useRef, useState, useMemo, useEffect } from 'react';
+import { useRef, useState, useMemo, useEffect, useCallback } from 'react';
 import { useFrame } from '@react-three/fiber';
+import type { ThreeEvent } from '@react-three/fiber';
 import { useViewerStore } from '@/store/viewerStore';
 import { useSensorStore } from '@/store/sensorStore';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
-import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
-import type { Model3D, ModelPart as ModelPartType } from '@/types';
+import type { Model3D } from '@/types';
 
 interface UploadedModelProps {
   model: Model3D;
@@ -38,71 +37,21 @@ export function UploadedModel({ model }: UploadedModelProps) {
             url,
             (gltf) => {
               if (!disposed) {
-                console.log('[3D Viewer] Model loaded successfully');
                 setScene(gltf.scene);
                 setLoading(false);
               }
             },
-            (progress) => {
-              console.log(`[3D Viewer] Loading progress: ${(progress.loaded / progress.total * 100).toFixed(1)}%`);
-            },
-            (err: any) => {
+            undefined,
+            (err: unknown) => {
               if (!disposed) {
-                console.error('[3D Viewer] Failed to load model:', err);
-                const errorMsg = err?.message || String(err) || 'Unknown error';
+                const errorMsg = err instanceof Error ? err.message : String(err);
                 setError(`Failed to load model: ${errorMsg}`);
                 setLoading(false);
               }
             },
           );
-        } else if (format === 'OBJ') {
-          const loader = new OBJLoader();
-          loader.load(
-            url,
-            (obj) => {
-              if (!disposed) {
-                console.log('[3D Viewer] OBJ model loaded successfully');
-                setScene(obj);
-                setLoading(false);
-              }
-            },
-            (progress) => {
-              console.log(`[3D Viewer] OBJ Loading progress: ${(progress.loaded / progress.total * 100).toFixed(1)}%`);
-            },
-            (err: any) => {
-              if (!disposed) {
-                console.error('[3D Viewer] Failed to load OBJ model:', err);
-                const errorMsg = err?.message || String(err) || 'Unknown error';
-                setError(`Failed to load OBJ model: ${errorMsg}`);
-                setLoading(false);
-              }
-            },
-          );
-        } else if (format === 'FBX') {
-          const loader = new FBXLoader();
-          loader.load(
-            url,
-            (obj) => {
-              if (!disposed) {
-                console.log('[3D Viewer] FBX model loaded successfully');
-                setScene(obj);
-                setLoading(false);
-              }
-            },
-            (progress) => {
-              console.log(`[3D Viewer] FBX Loading progress: ${(progress.loaded / progress.total * 100).toFixed(1)}%`);
-            },
-            (err: any) => {
-              if (!disposed) {
-                console.error('[3D Viewer] Failed to load FBX model:', err);
-                const errorMsg = err?.message || String(err) || 'Unknown error';
-                setError(`Failed to load FBX model: ${errorMsg}`);
-                setLoading(false);
-              }
-            },
-          );
         } else {
-          throw new Error(`Unsupported format: ${format}`);
+          throw new Error(`Unsupported format: ${format}. Only GLB and GLTF are supported.`);
         }
       } catch (err) {
         if (!disposed) {
@@ -135,17 +84,42 @@ export function UploadedModel({ model }: UploadedModelProps) {
 
 function ModelScene({ scene, model }: { scene: THREE.Group; model: Model3D }) {
   const groupRef = useRef<THREE.Group>(null!);
-  const parts = model.modelParts || model.parts || [];
+  const parts = useMemo(() => model.modelParts || model.parts || [], [model]);
 
-  // Build name → modelPartId map
-  const partMap = useMemo(() => {
-    const map = new Map<string, string>();
-    parts.forEach((p) => {
-      map.set(p.name, p.id);
+  // Collect scene meshes in traversal order (stable)
+  const sceneMeshes = useMemo(() => {
+    const found: THREE.Mesh[] = [];
+    scene.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) found.push(child as THREE.Mesh);
     });
-    console.log('[3D Viewer] Part map:', Object.fromEntries(map));
-    return map;
-  }, [parts]);
+    return found;
+  }, [scene]);
+
+  // Build DUAL lookup: meshName → modelPartId (primary) and meshIndex → modelPartId (fallback)
+  // This handles models where runtime mesh.name doesn't match the parsed name
+  const partMap = useMemo(() => {
+    const byName = new Map<string, string>();
+    const byIndex = new Map<number, string>();
+    parts.forEach((p) => {
+      byName.set(p.name, p.id);
+      if (typeof (p as any).index === 'number') byIndex.set((p as any).index, p.id);
+    });
+    // Warn on mismatches to help debugging
+    let mismatches = 0;
+    sceneMeshes.forEach((mesh, i) => {
+      if (mesh.name && !byName.has(mesh.name)) mismatches++;
+    });
+    if (mismatches > 0) {
+      console.warn(`[3D Viewer] ${mismatches} mesh(es) not matched by name — falling back to index mapping`);
+    }
+    return { byName, byIndex };
+  }, [parts, sceneMeshes]);
+
+  const resolvePartId = useCallback(
+    (mesh: THREE.Mesh, index: number): string | null =>
+      partMap.byName.get(mesh.name) ?? partMap.byIndex.get(index) ?? null,
+    [partMap],
+  );
 
   // Center and scale the model
   useEffect(() => {
@@ -186,22 +160,21 @@ function ModelScene({ scene, model }: { scene: THREE.Group; model: Model3D }) {
   return (
     <group ref={groupRef}>
       <primitive object={scene} />
-      {/* Attach interactive click handlers to meshes */}
-      <InteractiveMeshes scene={scene} partMap={partMap} />
+      <InteractiveMeshes meshes={sceneMeshes} resolvePartId={resolvePartId} />
     </group>
   );
 }
 
-function InteractiveMeshes({
-  scene,
-  partMap,
-}: {
-  scene: THREE.Group;
-  partMap: Map<string, string>;
-}) {
+interface InteractiveMeshesProps {
+  meshes: THREE.Mesh[];
+  resolvePartId: (mesh: THREE.Mesh, index: number) => string | null;
+}
+
+function InteractiveMeshes({ meshes, resolvePartId }: InteractiveMeshesProps) {
   const selectMesh = useViewerStore((s) => s.selectMesh);
   const hoverMesh = useViewerStore((s) => s.hoverMesh);
   const selectedMeshName = useViewerStore((s) => s.selectedMeshName);
+  const hoveredMeshName = useViewerStore((s) => s.hoveredMeshName);
   const realtimeValues = useSensorStore((s) => s.realtimeValues);
   const sensors = useSensorStore((s) => s.sensors);
 
@@ -214,67 +187,94 @@ function InteractiveMeshes({
     return map;
   }, [sensors]);
 
-  // Collect all meshes from the scene
-  const meshes = useMemo(() => {
-    const found: THREE.Mesh[] = [];
-    scene.traverse((child) => {
-      if ((child as THREE.Mesh).isMesh) {
-        found.push(child as THREE.Mesh);
-      }
-    });
-    console.log('[3D Viewer] Found meshes:', found.map(m => ({ name: m.name, type: m.type })));
-    return found;
-  }, [scene]);
+  // R3F-native click handler
+  const handleClick = useCallback(
+    (e: ThreeEvent<MouseEvent>, mesh: THREE.Mesh, index: number) => {
+      e.stopPropagation();
+      const partId = resolvePartId(mesh, index);
+      selectMesh(mesh.name, null, partId);
+    },
+    [resolvePartId, selectMesh],
+  );
 
-  // Apply color coding based on sensor data
+  // R3F-native hover handlers
+  const handlePointerOver = useCallback(
+    (e: ThreeEvent<PointerEvent>, mesh: THREE.Mesh, index: number) => {
+      e.stopPropagation();
+      const partId = resolvePartId(mesh, index);
+      hoverMesh(mesh.name, partId);
+      document.body.style.cursor = 'pointer';
+    },
+    [resolvePartId, hoverMesh],
+  );
+
+  const handlePointerOut = useCallback(
+    (e: ThreeEvent<PointerEvent>) => {
+      e.stopPropagation();
+      hoverMesh(null, null);
+      document.body.style.cursor = 'auto';
+    },
+    [hoverMesh],
+  );
+
+  // Apply color coding and selection highlight per frame
   useFrame(() => {
-    meshes.forEach((mesh) => {
-      const partId = partMap.get(mesh.name);
-      if (!partId) return;
-
-      const sensorId = partToSensor.get(partId);
+    meshes.forEach((mesh, i) => {
+      const partId = resolvePartId(mesh, i);
       const material = mesh.material;
-      
-      // Ensure material is MeshStandardMaterial
       if (!material) return;
-      
-      const mat = material as THREE.MeshStandardMaterial;
-      if (!mat.color) return;
+      const mat = Array.isArray(material)
+        ? (material[0] as THREE.MeshStandardMaterial)
+        : (material as THREE.MeshStandardMaterial);
+      if (!mat?.color) return;
 
+      // Selection: purple | Hover: blue | Default: none
       if (selectedMeshName === mesh.name) {
         mat.emissive?.setHex(0x6366f1);
+        mat.emissiveIntensity = 0.2;
+      } else if (hoveredMeshName === mesh.name) {
+        mat.emissive?.setHex(0x3b82f6);
         mat.emissiveIntensity = 0.15;
       } else {
         mat.emissive?.setHex(0x000000);
         mat.emissiveIntensity = 0;
       }
 
-      if (sensorId) {
-        const data = realtimeValues.get(sensorId);
-        if (data) {
-          if (data.value > 80) mat.color.set('#ef4444');
-          else if (data.value > 60) mat.color.set('#eab308');
-          else mat.color.set('#22c55e');
+      // Sensor value color coding (only for bound parts)
+      if (partId) {
+        const sensorId = partToSensor.get(partId);
+        if (sensorId) {
+          const data = realtimeValues.get(sensorId);
+          if (data) {
+            if (data.value > 80) mat.color.set('#ef4444');
+            else if (data.value > 60) mat.color.set('#eab308');
+            else mat.color.set('#22c55e');
+          }
         }
       }
     });
   });
 
-  // Make meshes clickable
-  useEffect(() => {
-    const handleClick = (mesh: THREE.Mesh) => {
-      const partId = partMap.get(mesh.name) || null;
-      console.log('[3D Viewer] Clicked mesh:', mesh.name, 'partId:', partId);
-      selectMesh(mesh.name, null, partId);
-    };
-
-    // Add userData for click detection
-    meshes.forEach((mesh) => {
-      mesh.userData._clickHandler = () => handleClick(mesh);
-    });
-    
-    console.log('[3D Viewer] Click handlers attached to', meshes.length, 'meshes');
-  }, [meshes, partMap, selectMesh]);
-
-  return null;
+  // Render invisible hit-test mesh overlays using R3F events
+  return (
+    <>
+      {meshes.map((mesh, i) => {
+        const geometry = mesh.geometry;
+        if (!geometry) return null;
+        return (
+          <mesh
+            key={mesh.uuid}
+            geometry={geometry}
+            matrixAutoUpdate={false}
+            matrix={mesh.matrixWorld}
+            onClick={(e) => handleClick(e, mesh, i)}
+            onPointerOver={(e) => handlePointerOver(e, mesh, i)}
+            onPointerOut={handlePointerOut}
+          >
+            <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+          </mesh>
+        );
+      })}
+    </>
+  );
 }

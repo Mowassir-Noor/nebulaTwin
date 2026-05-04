@@ -6,6 +6,7 @@ import type {
   Sensor,
   Alert,
   Model3D,
+  ModelPart,
   ModelVersion,
   StartStreamConfig,
   TimeSeriesPoint,
@@ -168,6 +169,10 @@ export const modelsApi = {
   permanentDelete: (id: string) => api.delete(`/models/${id}/permanent`),
   versions: (id: string) => api.get<ModelVersion[]>(`/models/${id}/versions`),
   rollback: (id: string) => api.post<Model3D>(`/models/${id}/rollback`),
+  parts: (id: string) =>
+    api.get<ModelPart[]>(`/models/${id}/parts`),
+  bindings: (id: string) =>
+    api.get<Sensor[]>(`/models/${id}/bindings`),
   boundSensors: (id: string) =>
     api.get<{ count: number }>(`/models/${id}/bound-sensors`),
 };

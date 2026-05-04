@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { AnalyticsService } from './analytics.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -22,12 +22,12 @@ export class AnalyticsController {
     @Query('to') to: string,
     @Query('limit') limit?: number,
   ) {
-    return this.analyticsService.getSensorHistory(
-      sensorId,
-      new Date(from),
-      new Date(to),
-      limit,
-    );
+    const fromDate = new Date(from);
+    const toDate = new Date(to);
+    if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
+      throw new BadRequestException('Invalid date format for "from" or "to" parameter. Use ISO 8601.');
+    }
+    return this.analyticsService.getSensorHistory(sensorId, fromDate, toDate, limit);
   }
 
   @Get('sensors/:sensorId/latest')
@@ -47,11 +47,11 @@ export class AnalyticsController {
     @Query('to') to: string,
     @Query('interval') interval?: string,
   ) {
-    return this.analyticsService.getSensorAggregated(
-      sensorId,
-      new Date(from),
-      new Date(to),
-      interval,
-    );
+    const fromDate = new Date(from);
+    const toDate = new Date(to);
+    if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
+      throw new BadRequestException('Invalid date format for "from" or "to" parameter. Use ISO 8601.');
+    }
+    return this.analyticsService.getSensorAggregated(sensorId, fromDate, toDate, interval);
   }
 }

@@ -175,13 +175,16 @@ model Model3D {
 }
 
 model ModelPart {
-  id   String @id @default(uuid())
-  name String
+  id    String @id @default(uuid())
+  name  String
+  index Int    @default(0)
 
   modelId String  @map("model_id")
   model   Model3D @relation(fields: [modelId], references: [id], onDelete: Cascade)
 
-  metadata Json?
+  positionOffset Json? @map("position_offset")
+  rotationOffset Json? @map("rotation_offset")
+  metadata       Json?
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

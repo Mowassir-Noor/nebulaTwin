@@ -15,6 +15,7 @@ import type { Model3D, CollaborationUser } from '@/types';
 export default function ViewerPage() {
   const { fetchSensors, initWebSocket } = useSensorStore();
   const selectedMeshName = useViewerStore((s) => s.selectedMeshName);
+  const setActiveModelInStore = useViewerStore((s) => s.setActiveModel);
   const [searchParams] = useSearchParams();
   const [models, setModels] = useState<Model3D[]>([]);
   const [activeModel, setActiveModel] = useState<Model3D | null>(null);
@@ -22,7 +23,23 @@ export default function ViewerPage() {
   const [showPlayback, setShowPlayback] = useState(false);
   const user = useAuthStore((s) => s.user);
   const sensors = useSensorStore((s) => s.sensors);
-  const unboundSensors = sensors.filter((s) => !s.modelPartId);
+  const activeModelTwinId = useViewerStore((s) => s.activeModelTwinId);
+
+  // Unbound sensors scoped to the active model's twin (or all if no model)
+  const unboundSensors = sensors.filter(
+    (s) => !s.modelPartId && (!activeModelTwinId || !s.assetId || s.asset?.twinId === activeModelTwinId),
+  );
+
+  // Switch active model: update local state + store (clears selection)
+  const handleModelChange = useCallback(
+    (model: Model3D | null) => {
+      setActiveModel(model);
+      setActiveModelInStore(model?.id ?? null, model?.twinId ?? null);
+      // Reload sensors so bindings reflect the new model context
+      fetchSensors();
+    },
+    [setActiveModelInStore, fetchSensors],
+  );
 
   const fetchModels = useCallback(async () => {
     try {
@@ -37,14 +54,13 @@ export default function ViewerPage() {
         const found = data.find((m) => m.id === modelId);
         if (found) {
           console.log('[ViewerPage] Setting active model from URL:', found);
-          setActiveModel(found);
+          handleModelChange(found);
         }
       }
     } catch (err) {
       console.error('[ViewerPage] Failed to fetch models:', err);
-      // Models list not available, use demo
     }
-  }, [searchParams]);
+  }, [searchParams, handleModelChange]);
 
   useEffect(() => {
     fetchSensors();
@@ -71,7 +87,7 @@ export default function ViewerPage() {
                 currentVersion={activeModel.version}
                 onSelectVersion={(id) => {
                   const m = models.find((m) => m.id === id);
-                  if (m) setActiveModel(m);
+                  if (m) handleModelChange(m);
                 }}
               />
             )}
@@ -89,7 +105,7 @@ export default function ViewerPage() {
                 value={activeModel?.id || ''}
                 onChange={(e) => {
                   const m = models.find((m) => m.id === e.target.value);
-                  setActiveModel(m || null);
+                  handleModelChange(m || null);
                 }}
               >
                 <option value="">Demo Factory</option>
@@ -116,7 +132,7 @@ export default function ViewerPage() {
 
       {/* Right sidebar: binding panel + sensor tray */}
       <div className="shrink-0 w-80 flex flex-col gap-3 overflow-y-auto">
-        {selectedMeshName && <SensorBindingPanel />}
+        {selectedMeshName && <SensorBindingPanel activeTwinId={activeModelTwinId ?? undefined} />}
 
         {/* Always-visible sensor tray for drag-and-drop */}
         {unboundSensors.length > 0 && !selectedMeshName && (

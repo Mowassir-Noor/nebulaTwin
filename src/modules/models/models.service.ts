@@ -6,11 +6,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 
-const ALLOWED_EXTENSIONS = ['.glb', '.gltf', '.obj'];
+const ALLOWED_EXTENSIONS = ['.glb', '.gltf'];
 const EXTENSION_TO_FORMAT: Record<string, ModelFormat> = {
   '.glb': ModelFormat.GLB,
   '.gltf': ModelFormat.GLTF,
-  '.obj': ModelFormat.OBJ,
 };
 
 @Injectable()
@@ -97,16 +96,17 @@ export class ModelsService {
       // Create model parts for each mesh
       if (meshNames.length > 0) {
         await tx.modelPart.createMany({
-          data: meshNames.map((meshName: string) => ({
+          data: meshNames.map((meshName, i) => ({
             id: uuidv4(),
             name: meshName,
+            index: i,
             modelId: m.id,
             metadata: {},
           })),
         });
       }
 
-      return tx.model3D.findUnique({ where: { id: m.id }, include: { modelParts: true } });
+      return tx.model3D.findUnique({ where: { id: m.id }, include: { modelParts: { orderBy: { index: 'asc' } } } });
     });
 
     this.invalidateCache(tenantId);
@@ -173,11 +173,11 @@ export class ModelsService {
 
       if (meshNames.length > 0) {
         await tx.modelPart.createMany({
-          data: meshNames.map((meshName: string) => ({ id: uuidv4(), name: meshName, modelId: m.id, metadata: {} })),
+          data: meshNames.map((meshName, i) => ({ id: uuidv4(), name: meshName, index: i, modelId: m.id, metadata: {} })),
         });
       }
 
-      return tx.model3D.findUnique({ where: { id: m.id }, include: { modelParts: true } });
+      return tx.model3D.findUnique({ where: { id: m.id }, include: { modelParts: { orderBy: { index: 'asc' } } } });
     });
 
     this.invalidateCache(tenantId);
@@ -216,7 +216,11 @@ export class ModelsService {
     if (twinId) where.twinId = twinId;
     if (!includeDeleted) where.deletedAt = null;
 
-    const result = await this.prisma.model3D.findMany({ where, include: { modelParts: true, twin: true }, orderBy: { createdAt: 'desc' } });
+    const result = await this.prisma.model3D.findMany({
+      where,
+      include: { modelParts: { orderBy: { index: 'asc' } }, twin: true },
+      orderBy: { createdAt: 'desc' },
+    });
     this.metadataCache.set(cacheKey, { data: result, ts: Date.now() });
     return result;
   }
@@ -231,7 +235,12 @@ export class ModelsService {
 
     const model = await this.prisma.model3D.findFirst({
       where,
-      include: { modelParts: { include: { sensors: true } }, twin: true, childVersions: { where: { deletedAt: null }, select: { id: true, version: true, createdAt: true, isLatest: true } }, parentModel: { select: { id: true, version: true, name: true } } },
+      include: {
+        modelParts: { include: { sensors: true }, orderBy: { index: 'asc' } },
+        twin: true,
+        childVersions: { where: { deletedAt: null }, select: { id: true, version: true, createdAt: true, isLatest: true } },
+        parentModel: { select: { id: true, version: true, name: true } },
+      },
     });
     if (!model) throw new NotFoundException('Model not found');
 
@@ -271,7 +280,16 @@ export class ModelsService {
   // ─── Soft Delete ────────────────────────────────────────
 
   async remove(id: string, tenantId: string) {
-    await this.findById(id, tenantId);
+    const model = await this.findById(id, tenantId);
+
+    // Unbind all sensors from this model's parts
+    const partIds = model.modelParts.map((p: any) => p.id);
+    if (partIds.length > 0) {
+      await this.prisma.sensor.updateMany({
+        where: { modelPartId: { in: partIds } },
+        data: { modelPartId: null },
+      });
+    }
 
     const result = await this.prisma.model3D.update({ where: { id }, data: { deletedAt: new Date(), isLatest: false } });
 
@@ -330,46 +348,84 @@ export class ModelsService {
     return this.prisma.sensor.count({ where: { modelPartId: { in: partIds } } });
   }
 
+  // ─── New endpoints ────────────────────────────────────────
+
+  async getModelParts(id: string, tenantId: string) {
+    const model = await this.findById(id, tenantId);
+    return model.modelParts;
+  }
+
+  async getModelBindings(id: string, tenantId: string) {
+    const model = await this.findById(id, tenantId);
+    const partIds = model.modelParts.map((p: any) => p.id);
+    if (partIds.length === 0) return [];
+    return this.prisma.sensor.findMany({
+      where: { modelPartId: { in: partIds }, tenantId },
+      select: { id: true, name: true, type: true, unit: true, mode: true, streamActive: true, modelPartId: true, modelPart: { select: { id: true, name: true, index: true } } },
+      orderBy: { name: 'asc' },
+    });
+  }
+
   // ─── Mesh Parsing ─────────────────────────────────────────
 
   private parseMeshNames(buffer: Buffer, ext: string): string[] {
     try {
-      if (ext === '.gltf') return this.parseGltfJson(buffer);
-      if (ext === '.glb') return this.parseGlbMeshes(buffer);
-      return ['Part_1'];
+      const raw = ext === '.glb' ? this.extractGlbJson(buffer) : JSON.parse(buffer.toString('utf-8'));
+      return this.meshNamesFromGltfJson(raw);
     } catch (err) {
-      this.logger.warn(`Mesh parsing failed: ${(err as Error).message}, using defaults`);
-      return ['Root'];
+      this.logger.warn(`Mesh parsing failed: ${(err as Error).message}, using part_0 fallback`);
+      return ['part_0'];
     }
   }
 
-  private parseGltfJson(buffer: Buffer): string[] {
-    try {
-      const json = JSON.parse(buffer.toString('utf-8'));
-      const meshes = json.meshes || [];
-      return meshes.map((m: any, i: number) => m.name || `Mesh_${i}`);
-    } catch {
-      return ['Root'];
-    }
+  private extractGlbJson(buffer: Buffer): any {
+    if (buffer.length < 20) throw new Error('GLB too small');
+    if (buffer.readUInt32LE(0) !== 0x46546c67) throw new Error('Not a GLB file');
+    const jsonLength = buffer.readUInt32LE(12);
+    if (jsonLength === 0 || 20 + jsonLength > buffer.length) throw new Error('Invalid GLB JSON chunk');
+    return JSON.parse(buffer.subarray(20, 20 + jsonLength).toString('utf-8'));
   }
 
-  private parseGlbMeshes(buffer: Buffer): string[] {
-    try {
-      if (buffer.length < 20) return ['Root'];
-      const magic = buffer.readUInt32LE(0);
-      if (magic !== 0x46546c67) return ['Root']; // 'glTF'
-      const jsonLength = buffer.readUInt32LE(12);
-      const jsonBuffer = buffer.subarray(20, 20 + jsonLength);
-      const json = JSON.parse(jsonBuffer.toString('utf-8'));
-      const meshes = json.meshes || [];
-      const nodes = json.nodes || [];
-      const meshNames: string[] = [];
-      for (const node of nodes) {
-        if (node.mesh !== undefined) meshNames.push(node.name || meshes[node.mesh]?.name || `Mesh_${node.mesh}`);
+  private meshNamesFromGltfJson(json: any): string[] {
+    const meshes: any[] = json.meshes || [];
+    const nodes: any[] = json.nodes || [];
+
+    if (meshes.length === 0) return ['part_0'];
+
+    // Walk the node tree to get names in scene order
+    const orderedNames: string[] = [];
+    const seenMeshIndices = new Set<number>();
+
+    for (const node of nodes) {
+      if (node.mesh === undefined) continue;
+      const idx: number = node.mesh;
+      if (seenMeshIndices.has(idx)) continue;
+      seenMeshIndices.add(idx);
+      // Prefer node name > mesh name > deterministic fallback
+      const raw = (node.name as string | undefined) || (meshes[idx]?.name as string | undefined) || '';
+      orderedNames.push(raw.trim() || `part_${idx}`);
+    }
+
+    // Any meshes not referenced by a node
+    for (let i = 0; i < meshes.length; i++) {
+      if (!seenMeshIndices.has(i)) {
+        const raw = (meshes[i]?.name as string | undefined) || '';
+        orderedNames.push(raw.trim() || `part_${i}`);
       }
-      return meshNames.length > 0 ? meshNames : meshes.map((m: any, i: number) => m.name || `Mesh_${i}`);
-    } catch {
-      return ['Root'];
     }
+
+    // Deduplicate: if a name appears more than once, suffix with index
+    const nameCounts = new Map<string, number>();
+    for (const n of orderedNames) nameCounts.set(n, (nameCounts.get(n) ?? 0) + 1);
+
+    const occurrences = new Map<string, number>();
+    return orderedNames.map((name, i) => {
+      if ((nameCounts.get(name) ?? 1) > 1) {
+        const count = occurrences.get(name) ?? 0;
+        occurrences.set(name, count + 1);
+        return `${name}_${i}`;
+      }
+      return name;
+    });
   }
 }

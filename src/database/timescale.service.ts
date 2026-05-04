@@ -19,7 +19,32 @@ export class TimescaleService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit() {
+    await this.ensureSchema();
     this.logger.log('TimescaleDB service initialized');
+  }
+
+  private async ensureSchema(): Promise<void> {
+    try {
+      await this.prisma.$executeRawUnsafe(`CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE`);
+      await this.prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS sensor_data (
+          time        TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+          sensor_id   TEXT            NOT NULL,
+          value       DOUBLE PRECISION NOT NULL,
+          metadata    JSONB
+        )
+      `);
+      await this.prisma.$executeRawUnsafe(
+        `SELECT create_hypertable('sensor_data', 'time', if_not_exists => TRUE)`,
+      );
+      await this.prisma.$executeRawUnsafe(`
+        CREATE INDEX IF NOT EXISTS idx_sensor_data_sensor_id
+          ON sensor_data (sensor_id, time DESC)
+      `);
+      this.logger.log('TimescaleDB schema ready');
+    } catch (err) {
+      this.logger.error('TimescaleDB schema init failed', (err as Error).message);
+    }
   }
 
   async onModuleDestroy() {

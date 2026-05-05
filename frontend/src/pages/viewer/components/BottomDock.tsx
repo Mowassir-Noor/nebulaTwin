@@ -5,8 +5,9 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 import { PlaybackControls } from '@/components/playback/PlaybackControls';
 import { AlertsPanel } from './AlertsPanel';
 import { useSensorStore } from '@/store/sensorStore';
+import wsService from '@/services/websocket';
 import { formatSensorValue, getSensorGradientColor, getSensorValue } from '@/utils/sensorVisualization';
-import type { Sensor } from '@/types';
+import type { AlertEvent, Sensor } from '@/types';
 
 interface BottomDockProps {
   collapsed: boolean;
@@ -28,7 +29,21 @@ interface ChartPoint {
 
 export function BottomDock({ collapsed, mode, playbackTimestamp, playbackValues, modelSensors, onToggleCollapsed, onPlaybackTick, onPlaybackEnd }: BottomDockProps) {
   const [activeTab, setActiveTab] = useState<DockTab>('charts');
+  const [unreadAlerts, setUnreadAlerts] = useState(0);
   const realtimeValues = useSensorStore((state) => state.realtimeValues);
+
+  useEffect(() => {
+    const unsub = wsService.onAlert((event: AlertEvent) => {
+      if (activeTab !== 'alerts') {
+        setUnreadAlerts((n) => n + 1);
+      }
+      if (event.severity === 'CRITICAL') {
+        setActiveTab('alerts');
+        setUnreadAlerts(0);
+      }
+    });
+    return unsub;
+  }, [activeTab]);
   const chartSensors = useMemo(() => modelSensors.slice(0, 4), [modelSensors]);
   const [series, setSeries] = useState<ChartPoint[]>([]);
 
@@ -96,7 +111,7 @@ export function BottomDock({ collapsed, mode, playbackTimestamp, playbackValues,
       <div className="flex items-center justify-between border-b border-slate-800 px-4 py-2">
         <div className="flex items-center gap-2">
           <DockTabButton active={activeTab === 'charts'} onClick={() => setActiveTab('charts')} icon={<BarChart3 size={14} />} label="Charts" />
-          <DockTabButton active={activeTab === 'alerts'} onClick={() => setActiveTab('alerts')} icon={<AlertTriangle size={14} />} label="Alerts" />
+          <DockTabButton active={activeTab === 'alerts'} onClick={() => { setActiveTab('alerts'); setUnreadAlerts(0); }} icon={<AlertTriangle size={14} />} label="Alerts" badge={unreadAlerts} />
           <DockTabButton active={activeTab === 'logs'} onClick={() => setActiveTab('logs')} icon={<FileText size={14} />} label="Logs" />
         </div>
         <div className="flex items-center gap-2">
@@ -140,11 +155,16 @@ export function BottomDock({ collapsed, mode, playbackTimestamp, playbackValues,
   );
 }
 
-function DockTabButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
+function DockTabButton({ active, onClick, icon, label, badge = 0 }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string; badge?: number }) {
   return (
-    <button type="button" onClick={onClick} className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium transition ${active ? 'bg-cyan-400/12 text-cyan-200 shadow-inner shadow-cyan-950/30' : 'text-slate-500 hover:bg-slate-900 hover:text-slate-200'}`}>
+    <button type="button" onClick={onClick} className={`relative flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium transition ${active ? 'bg-cyan-400/12 text-cyan-200 shadow-inner shadow-cyan-950/30' : 'text-slate-500 hover:bg-slate-900 hover:text-slate-200'}`}>
       {icon}
       {label}
+      {badge > 0 && (
+        <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white animate-pulse">
+          {badge > 99 ? '99+' : badge}
+        </span>
+      )}
     </button>
   );
 }

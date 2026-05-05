@@ -16,6 +16,8 @@ interface SensorState {
   clearOverride: (id: string) => Promise<void>;
   startStream: (id: string, config: StartStreamConfig) => Promise<void>;
   stopStream: (id: string) => Promise<void>;
+  deleteSensor: (id: string) => Promise<void>;
+  unbindSensor: (id: string) => Promise<void>;
   updateRealtimeValue: (data: SensorDataPoint) => void;
   getRealtimeValue: (sensorId: string) => number | undefined;
   initWebSocket: (tenantId?: string) => void;
@@ -84,6 +86,30 @@ export const useSensorStore = create<SensorState>((set, get) => ({
     } catch (err) {
       const error = err as { response?: { data?: { message?: string } } };
       toast.error(error?.response?.data?.message || 'Failed to stop stream');
+      throw err;
+    }
+  },
+
+  deleteSensor: async (id) => {
+    try {
+      await sensorsApi.delete(id);
+      toast.success('Sensor deleted');
+      set((state) => ({ sensors: state.sensors.filter((s) => s.id !== id), selectedSensor: state.selectedSensor?.id === id ? null : state.selectedSensor }));
+    } catch (err) {
+      const error = err as { response?: { data?: { message?: string } } };
+      toast.error(error?.response?.data?.message || 'Failed to delete sensor');
+      throw err;
+    }
+  },
+
+  unbindSensor: async (id) => {
+    try {
+      await sensorsApi.unbind(id);
+      toast.success('Sensor unbound from model part');
+      await get().fetchSensors();
+    } catch (err) {
+      const error = err as { response?: { data?: { message?: string } } };
+      toast.error(error?.response?.data?.message || 'Failed to unbind sensor');
       throw err;
     }
   },

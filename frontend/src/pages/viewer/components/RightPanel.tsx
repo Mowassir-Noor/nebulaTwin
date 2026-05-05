@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Activity, BarChart3, Cpu, Info, SlidersHorizontal, Unlink, X } from 'lucide-react';
+import { Activity, BarChart3, Bell, BellOff, Cpu, Info, SlidersHorizontal, Trash2, Unlink, X } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { SensorBindingPanel } from '@/components/sensors/SensorBindingPanel';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { sensorsApi } from '@/services/api';
 import { useSensorStore } from '@/store/sensorStore';
 import { useViewerStore } from '@/store/viewerStore';
+import { toast } from '@/components/ui/Toast';
 import { formatSensorValue, getSensorGradientColor, getSensorStatus, getSensorStatusClasses, getSensorValue } from '@/utils/sensorVisualization';
 import type { Sensor } from '@/types';
 
@@ -197,6 +199,8 @@ function SensorLiveRow({ sensor, realtimeValues, pinned }: {
 }) {
   const [expanded, setExpanded] = useState(pinned);
   const [series, setSeries] = useState<ChartPoint[]>([]);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const { deleteSensor, unbindSensor } = useSensorStore();
   const value = getSensorValue(sensor, realtimeValues);
   const status = getSensorStatus(value, sensor);
   const color = getSensorGradientColor(value, sensor);
@@ -204,6 +208,7 @@ function SensorLiveRow({ sensor, realtimeValues, pinned }: {
   useEffect(() => {
     setSeries([]);
     setExpanded(pinned);
+    setConfirmDelete(false);
   }, [sensor.id, pinned]);
 
   useEffect(() => {
@@ -264,6 +269,47 @@ function SensorLiveRow({ sensor, realtimeValues, pinned }: {
                 </ResponsiveContainer>
               </div>
               <LiveDataSlider sensor={sensor} realtimeValues={realtimeValues} />
+
+              <div className="flex gap-2 pt-1">
+                {sensor.modelPartId && (
+                  <button
+                    type="button"
+                    onClick={() => unbindSensor(sensor.id)}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-900/60 py-2 text-xs text-slate-400 transition hover:border-amber-400/50 hover:text-amber-300"
+                  >
+                    <Unlink size={12} />
+                    Unbind from part
+                  </button>
+                )}
+                {!confirmDelete ? (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDelete(true)}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-900/60 py-2 text-xs text-slate-400 transition hover:border-red-500/50 hover:text-red-400"
+                  >
+                    <Trash2 size={12} />
+                    Delete sensor
+                  </button>
+                ) : (
+                  <div className="flex flex-1 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => deleteSensor(sensor.id)}
+                      className="flex flex-1 items-center justify-center gap-1 rounded-xl border border-red-500/60 bg-red-500/10 py-2 text-xs font-semibold text-red-400 transition hover:bg-red-500/20"
+                    >
+                      <Trash2 size={11} />
+                      Confirm
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDelete(false)}
+                      className="flex flex-1 items-center justify-center rounded-xl border border-slate-700 bg-slate-900/60 py-2 text-xs text-slate-500 transition hover:text-slate-300"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </motion.div>
         )}
@@ -273,11 +319,18 @@ function SensorLiveRow({ sensor, realtimeValues, pinned }: {
 }
 
 function LiveDataSlider({ sensor, realtimeValues }: { sensor: Sensor; realtimeValues: Map<string, { value: number }> }) {
-  const { overrideSensor, clearOverride } = useSensorStore();
+  const { overrideSensor, clearOverride, fetchSensors } = useSensorStore();
   const liveValue = getSensorValue(sensor, realtimeValues) ?? 0;
 
-  const sliderMin = sensor.alertMinThreshold ?? 0;
-  const sliderMax = sensor.alertMaxThreshold ?? 100;
+  const hasThresholds = sensor.alertMinThreshold != null || sensor.alertMaxThreshold != null;
+  const alertMin = sensor.alertMinThreshold ?? null;
+  const alertMax = sensor.alertMaxThreshold ?? null;
+
+  // Slider range is wider than alert thresholds so you can push into critical territory
+  const threshRange = (alertMax ?? 100) - (alertMin ?? 0);
+  const pad = hasThresholds ? Math.max(threshRange * 0.5, 10) : 50;
+  const sliderMin = alertMin != null ? Math.floor(alertMin - pad) : 0;
+  const sliderMax = alertMax != null ? Math.ceil(alertMax + pad) : 100;
   const sliderStep = (sliderMax - sliderMin) <= 10 ? 0.01 : (sliderMax - sliderMin) <= 100 ? 0.1 : 1;
 
   const isManual = sensor.mode === 'MANUAL';
@@ -285,6 +338,10 @@ function LiveDataSlider({ sensor, realtimeValues }: { sensor: Sensor; realtimeVa
 
   const [draftValue, setDraftValue] = useState<number>(liveValue);
   const isDragging = useRef(false);
+  const [showThresholds, setShowThresholds] = useState(!hasThresholds);
+  const [threshMin, setThreshMin] = useState<string>(sensor.alertMinThreshold?.toString() ?? '');
+  const [threshMax, setThreshMax] = useState<string>(sensor.alertMaxThreshold?.toString() ?? '');
+  const [savingThresh, setSavingThresh] = useState(false);
 
   useEffect(() => {
     if (!isDragging.current) setDraftValue(liveValue);
@@ -292,6 +349,9 @@ function LiveDataSlider({ sensor, realtimeValues }: { sensor: Sensor; realtimeVa
 
   useEffect(() => {
     setDraftValue(liveValue);
+    setThreshMin(sensor.alertMinThreshold?.toString() ?? '');
+    setThreshMax(sensor.alertMaxThreshold?.toString() ?? '');
+    setShowThresholds(sensor.alertMinThreshold == null && sensor.alertMaxThreshold == null);
   }, [sensor.id]);
 
   const color = getSensorGradientColor(draftValue, sensor);
@@ -304,16 +364,43 @@ function LiveDataSlider({ sensor, realtimeValues }: { sensor: Sensor; realtimeVa
   }
 
   function handleInputChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const next = Number(event.target.value);
-    setDraftValue(next);
+    setDraftValue(Number(event.target.value));
   }
 
   function handleInputCommit() {
     overrideSensor(sensor.id, draftValue);
   }
 
-  function handleClear() {
-    clearOverride(sensor.id);
+  async function handleSaveThresholds() {
+    setSavingThresh(true);
+    try {
+      await sensorsApi.update(sensor.id, {
+        alertMinThreshold: threshMin !== '' ? Number(threshMin) : null,
+        alertMaxThreshold: threshMax !== '' ? Number(threshMax) : null,
+      });
+      toast.success('Alert thresholds saved');
+      setShowThresholds(false);
+      fetchSensors();
+    } catch {
+      toast.error('Failed to save thresholds');
+    } finally {
+      setSavingThresh(false);
+    }
+  }
+
+  async function handleClearThresholds() {
+    setSavingThresh(true);
+    try {
+      await sensorsApi.update(sensor.id, { alertMinThreshold: null, alertMaxThreshold: null });
+      setThreshMin('');
+      setThreshMax('');
+      toast.success('Thresholds cleared — alerts disabled');
+      fetchSensors();
+    } catch {
+      toast.error('Failed to clear thresholds');
+    } finally {
+      setSavingThresh(false);
+    }
   }
 
   return (
@@ -321,7 +408,10 @@ function LiveDataSlider({ sensor, realtimeValues }: { sensor: Sensor; realtimeVa
       <div className="mb-4 flex items-center justify-between gap-2">
         <div>
           <p className="text-sm font-semibold text-slate-100">Manual Override</p>
-          <p className="text-xs text-slate-500">{sensor.unit ? `${sliderMin} – ${sliderMax} ${sensor.unit}` : `${sliderMin} – ${sliderMax}`}</p>
+          <p className="text-xs text-slate-500">
+            Range: {sliderMin} – {sliderMax}{sensor.unit ? ` ${sensor.unit}` : ''}
+            {hasThresholds && <span className="ml-2 text-amber-400/70">· alerts at {alertMin ?? '—'}/{alertMax ?? '—'}</span>}
+          </p>
         </div>
         <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
           isManual ? 'border-amber-400/40 bg-amber-400/10 text-amber-300'
@@ -375,10 +465,94 @@ function LiveDataSlider({ sensor, realtimeValues }: { sensor: Sensor; realtimeVa
       </div>
 
       {isManual && (
-        <Button size="sm" variant="outline" onClick={handleClear} className="w-full rounded-xl border-slate-700 text-slate-300 hover:border-cyan-400/50 hover:text-cyan-200">
+        <Button size="sm" variant="outline" onClick={() => clearOverride(sensor.id)} className="mb-3 w-full rounded-xl border-slate-700 text-slate-300 hover:border-cyan-400/50 hover:text-cyan-200">
           Clear Override → Return to REAL
         </Button>
       )}
+
+      <div className="border-t border-slate-800/60 pt-3">
+        <button
+          type="button"
+          onClick={() => setShowThresholds((v) => !v)}
+          className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs transition ${
+            hasThresholds
+              ? 'border border-amber-500/30 bg-amber-500/8 text-amber-300 hover:bg-amber-500/15'
+              : 'border border-dashed border-slate-700 text-slate-500 hover:border-slate-600 hover:text-slate-400'
+          }`}
+        >
+          <span className="flex items-center gap-2">
+            {hasThresholds ? <Bell size={12} /> : <BellOff size={12} />}
+            {hasThresholds
+              ? `Alert thresholds: ${sensor.alertMinThreshold ?? '—'} / ${sensor.alertMaxThreshold ?? '—'}${sensor.unit ? ` ${sensor.unit}` : ''}`
+              : 'No alert thresholds — alerts disabled'}
+          </span>
+          <span className="text-[10px] text-slate-600">{showThresholds ? 'hide' : 'edit'}</span>
+        </button>
+
+        <AnimatePresence initial={false}>
+          {showThresholds && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              className="overflow-hidden"
+            >
+              <div className="mt-3 space-y-3">
+                {!hasThresholds && (
+                  <p className="rounded-xl border border-amber-500/20 bg-amber-500/8 px-3 py-2 text-[10px] leading-4 text-amber-300">
+                    Set min/max thresholds to enable automatic alerts when this sensor goes critical.
+                  </p>
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="mb-1 block text-[10px] text-slate-500">Min threshold</label>
+                    <Input
+                      type="number"
+                      placeholder="e.g. 10"
+                      value={threshMin}
+                      onChange={(e) => setThreshMin(e.target.value)}
+                      className="h-8 rounded-xl border-slate-700 bg-slate-950/70 text-xs font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] text-slate-500">Max threshold</label>
+                    <Input
+                      type="number"
+                      placeholder="e.g. 90"
+                      value={threshMax}
+                      onChange={(e) => setThreshMax(e.target.value)}
+                      className="h-8 rounded-xl border-slate-700 bg-slate-950/70 text-xs font-mono"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    onClick={handleSaveThresholds}
+                    disabled={savingThresh}
+                    className="flex-1 rounded-xl bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/40 disabled:opacity-50"
+                  >
+                    <Bell size={11} className="mr-1" />
+                    {savingThresh ? 'Saving…' : 'Save Thresholds'}
+                  </Button>
+                  {hasThresholds && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleClearThresholds}
+                      disabled={savingThresh}
+                      className="rounded-xl border-slate-700 text-slate-400 hover:text-red-400 hover:border-red-500/40 disabled:opacity-50"
+                    >
+                      <BellOff size={11} />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }

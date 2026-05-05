@@ -13,6 +13,7 @@ interface BottomDockProps {
   mode: 'LIVE' | 'PLAYBACK';
   playbackTimestamp: string | null;
   playbackValues: Map<string, number>;
+  modelSensors: Sensor[];
   onToggleCollapsed: () => void;
   onPlaybackTick: (values: Map<string, number>, timestamp: string) => void;
   onPlaybackEnd: () => void;
@@ -25,12 +26,16 @@ interface ChartPoint {
   [key: string]: string | number;
 }
 
-export function BottomDock({ collapsed, mode, playbackTimestamp, playbackValues, onToggleCollapsed, onPlaybackTick, onPlaybackEnd }: BottomDockProps) {
+export function BottomDock({ collapsed, mode, playbackTimestamp, playbackValues, modelSensors, onToggleCollapsed, onPlaybackTick, onPlaybackEnd }: BottomDockProps) {
   const [activeTab, setActiveTab] = useState<DockTab>('charts');
-  const sensors = useSensorStore((state) => state.sensors);
   const realtimeValues = useSensorStore((state) => state.realtimeValues);
-  const chartSensors = useMemo(() => sensors.slice(0, 4), [sensors]);
+  const chartSensors = useMemo(() => modelSensors.slice(0, 4), [modelSensors]);
   const [series, setSeries] = useState<ChartPoint[]>([]);
+
+  const chartSensorKey = chartSensors.map((s) => s.id).join(',');
+  useEffect(() => {
+    setSeries([]);
+  }, [chartSensorKey]);
 
   useEffect(() => {
     if (chartSensors.length === 0) return;
@@ -49,11 +54,13 @@ export function BottomDock({ collapsed, mode, playbackTimestamp, playbackValues,
   }, [chartSensors, mode, playbackTimestamp, playbackValues, realtimeValues]);
 
   const logs = useMemo(() => {
+    const modelSensorIds = new Set(modelSensors.map((s) => s.id));
     return Array.from(realtimeValues.values())
+      .filter((item) => modelSensorIds.has(item.sensorId))
       .slice(-24)
       .reverse()
       .map((item) => {
-        const sensor = sensors.find((entry) => entry.id === item.sensorId);
+        const sensor = modelSensors.find((entry) => entry.id === item.sensorId);
         return {
           id: `${item.sensorId}-${item.timestamp}`,
           sensorName: sensor?.name ?? item.sensorId,
@@ -63,7 +70,7 @@ export function BottomDock({ collapsed, mode, playbackTimestamp, playbackValues,
           mode: item.mode,
         };
       });
-  }, [realtimeValues, sensors]);
+  }, [realtimeValues, modelSensors]);
 
   if (collapsed) {
     return (
@@ -126,7 +133,7 @@ export function BottomDock({ collapsed, mode, playbackTimestamp, playbackValues,
         </div>
 
         <div className="min-h-0 border-l border-slate-800 p-4">
-          <PlaybackControls sensorIds={sensors.map((sensor) => sensor.id)} onPlaybackTick={onPlaybackTick} onPlaybackEnd={onPlaybackEnd} />
+          <PlaybackControls sensorIds={modelSensors.map((sensor) => sensor.id)} onPlaybackTick={onPlaybackTick} onPlaybackEnd={onPlaybackEnd} />
         </div>
       </div>
     </motion.section>

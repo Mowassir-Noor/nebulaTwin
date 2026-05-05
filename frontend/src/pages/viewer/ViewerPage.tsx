@@ -20,7 +20,7 @@ export default function ViewerPage() {
   const { fetchSensors, initWebSocket } = useSensorStore();
   const sensors = useSensorStore((state) => state.sensors);
   const realtimeValues = useSensorStore((state) => state.realtimeValues);
-  const { twins, fetchTwins } = useTwinStore();
+  const { twins, assets, fetchTwins, fetchAssets } = useTwinStore();
   const activeModelTwinId = useViewerStore((state) => state.activeModelTwinId);
   const setActiveModelInStore = useViewerStore((state) => state.setActiveModel);
   const focusOnModelPart = useViewerStore((state) => state.focusOnModelPart);
@@ -41,12 +41,23 @@ export default function ViewerPage() {
   const playbackActive = showPlayback && playbackValues.size > 0;
   const mode = playbackActive ? 'PLAYBACK' : 'LIVE';
   const activeTwinId = activeModelTwinId ?? selectedTwinId;
+
+  const modelSensors = useMemo(() => {
+    if (!activeTwinId && !activeModel) return sensors;
+    const assetIds = new Set(assets.map((a) => a.id));
+    const modelPartIds = new Set((activeModel?.parts ?? activeModel?.modelParts ?? []).map((p) => p.id));
+    return sensors.filter(
+      (s) =>
+        (s.assetId && assetIds.has(s.assetId)) ||
+        (s.modelPartId && modelPartIds.has(s.modelPartId)),
+    );
+  }, [activeTwinId, activeModel, assets, sensors]);
   const connectedSensors = useMemo(() => {
-    return sensors.filter((sensor) => realtimeValues.has(sensor.id)).length;
-  }, [realtimeValues, sensors]);
+    return modelSensors.filter((sensor) => realtimeValues.has(sensor.id)).length;
+  }, [realtimeValues, modelSensors]);
   const criticalSensors = useMemo(() => {
-    return sensors.filter((sensor) => ((playbackActive ? playbackValues.get(sensor.id) : realtimeValues.get(sensor.id)?.value) ?? 0) >= 80).length;
-  }, [playbackActive, playbackValues, realtimeValues, sensors]);
+    return modelSensors.filter((sensor) => ((playbackActive ? playbackValues.get(sensor.id) : realtimeValues.get(sensor.id)?.value) ?? 0) >= 80).length;
+  }, [playbackActive, playbackValues, realtimeValues, modelSensors]);
 
   const handleModelChange = useCallback(
     (model: Model3D | null) => {
@@ -131,6 +142,10 @@ export default function ViewerPage() {
   }, [fetchModels, fetchSensors, fetchTwins, initWebSocket, user?.tenantId]);
 
   useEffect(() => {
+    if (activeTwinId) fetchAssets(activeTwinId);
+  }, [activeTwinId, fetchAssets]);
+
+  useEffect(() => {
     const handleFullscreenChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
@@ -195,13 +210,14 @@ export default function ViewerPage() {
               mode={mode}
               playbackTimestamp={playbackTimestamp}
               playbackValues={playbackValues}
+              modelSensors={modelSensors}
               onToggleCollapsed={() => setBottomCollapsed((current) => !current)}
               onPlaybackTick={handlePlaybackTick}
               onPlaybackEnd={handlePlaybackEnd}
             />
           </main>
 
-          <RightPanel activeTwinId={activeTwinId ?? undefined} />
+          <RightPanel activeTwinId={activeTwinId ?? undefined} modelSensors={modelSensors} />
         </div>
       </div>
     </div>

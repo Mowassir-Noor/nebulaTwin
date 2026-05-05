@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Activity, BarChart3, Cpu, Info, SlidersHorizontal, Unlink, X } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -12,6 +12,7 @@ import type { Sensor } from '@/types';
 
 interface RightPanelProps {
   activeTwinId?: string;
+  modelSensors: Sensor[];
 }
 
 type RightTab = 'overview' | 'live' | 'controls';
@@ -21,7 +22,7 @@ interface ChartPoint {
   value: number;
 }
 
-export function RightPanel({ activeTwinId }: RightPanelProps) {
+export function RightPanel({ activeTwinId, modelSensors }: RightPanelProps) {
   const [activeTab, setActiveTab] = useState<RightTab>('overview');
   const selectedMeshName = useViewerStore((state) => state.selectedMeshName);
   const selectedModelPartId = useViewerStore((state) => state.selectedModelPartId);
@@ -69,28 +70,30 @@ export function RightPanel({ activeTwinId }: RightPanelProps) {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {!hasContext ? (
-          <EmptyContext />
-        ) : (
-          <AnimatePresence mode="wait">
-            {activeTab === 'overview' && (
-              <motion.div key="overview" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="space-y-4">
+        <AnimatePresence mode="wait">
+          {activeTab === 'overview' && (
+            <motion.div key="overview" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="space-y-4">
+              {!hasContext ? <EmptyContext /> : (
                 <Overview selectedMeshName={selectedMeshName} selectedModelPartId={selectedModelPartId} boundSensors={boundSensors} contextSensor={contextSensor} realtimeValues={realtimeValues} />
-              </motion.div>
-            )}
-            {activeTab === 'live' && (
-              <motion.div key="live" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="space-y-4">
-                <LiveData sensor={contextSensor} realtimeValues={realtimeValues} />
-              </motion.div>
-            )}
-            {activeTab === 'controls' && (
-              <motion.div key="controls" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="space-y-4">
-                {selectedMeshName && <SensorBindingPanel activeTwinId={activeTwinId} />}
-                {contextSensor && <ContextSensorControls sensor={contextSensor} realtimeValues={realtimeValues} />}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        )}
+              )}
+            </motion.div>
+          )}
+          {activeTab === 'live' && (
+            <motion.div key="live" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
+              <LiveData modelSensors={modelSensors} contextSensor={contextSensor} realtimeValues={realtimeValues} />
+            </motion.div>
+          )}
+          {activeTab === 'controls' && (
+            <motion.div key="controls" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="space-y-4">
+              {!hasContext ? <EmptyContext /> : (
+                <>
+                  {selectedMeshName && <SensorBindingPanel activeTwinId={activeTwinId} />}
+                  {contextSensor && <ContextSensorControls sensor={contextSensor} realtimeValues={realtimeValues} />}
+                </>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </motion.aside>
   );
@@ -141,54 +144,241 @@ function Overview({ selectedMeshName, selectedModelPartId, boundSensors, context
   );
 }
 
-function LiveData({ sensor, realtimeValues }: { sensor: Sensor | null; realtimeValues: Map<string, { value: number; timestamp?: string }> }) {
+const SEVERITY_ORDER: Record<string, number> = { critical: 0, warning: 1, normal: 2, offline: 3 };
+
+function LiveData({ modelSensors, contextSensor, realtimeValues }: {
+  modelSensors: Sensor[];
+  contextSensor: Sensor | null;
+  realtimeValues: Map<string, { value: number; timestamp?: string }>;
+}) {
+  const sorted = useMemo(() => {
+    const pinId = contextSensor?.id;
+    return [...modelSensors].sort((a, b) => {
+      if (a.id === pinId) return -1;
+      if (b.id === pinId) return 1;
+      const aVal = getSensorValue(a, realtimeValues);
+      const bVal = getSensorValue(b, realtimeValues);
+      const aOrd = SEVERITY_ORDER[getSensorStatus(aVal, a)] ?? 3;
+      const bOrd = SEVERITY_ORDER[getSensorStatus(bVal, b)] ?? 3;
+      return aOrd - bOrd;
+    });
+  }, [modelSensors, contextSensor?.id, realtimeValues]);
+
+  if (modelSensors.length === 0) {
+    return <EmptyCard title="No sensors on this model" description="Bind sensors to model parts using the Controls tab or the left panel." />;
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+          {modelSensors.length} sensor{modelSensors.length !== 1 ? 's' : ''} · live telemetry
+        </p>
+        {contextSensor && (
+          <span className="text-[10px] text-cyan-400">↑ selected pinned</span>
+        )}
+      </div>
+      {sorted.map((sensor) => (
+        <SensorLiveRow
+          key={sensor.id}
+          sensor={sensor}
+          realtimeValues={realtimeValues}
+          pinned={sensor.id === contextSensor?.id}
+        />
+      ))}
+    </div>
+  );
+}
+
+function SensorLiveRow({ sensor, realtimeValues, pinned }: {
+  sensor: Sensor;
+  realtimeValues: Map<string, { value: number; timestamp?: string }>;
+  pinned: boolean;
+}) {
+  const [expanded, setExpanded] = useState(pinned);
   const [series, setSeries] = useState<ChartPoint[]>([]);
-  const value = sensor ? getSensorValue(sensor, realtimeValues) : undefined;
+  const value = getSensorValue(sensor, realtimeValues);
+  const status = getSensorStatus(value, sensor);
+  const color = getSensorGradientColor(value, sensor);
 
   useEffect(() => {
     setSeries([]);
-  }, [sensor?.id]);
+    setExpanded(pinned);
+  }, [sensor.id, pinned]);
 
   useEffect(() => {
-    if (!sensor || typeof value !== 'number') return;
-    setSeries((current) => {
-      const next = [...current, { time: new Date().toLocaleTimeString([], { minute: '2-digit', second: '2-digit' }), value }];
+    if (typeof value !== 'number') return;
+    setSeries((prev) => {
+      const next = [...prev, { time: new Date().toLocaleTimeString([], { minute: '2-digit', second: '2-digit' }), value }];
       return next.slice(-40);
     });
-  }, [sensor, value]);
+  }, [value]);
 
-  if (!sensor) {
-    return <EmptyCard title="No sensor selected" description="Select a bound sensor or choose a sensor from the left panel." />;
+  return (
+    <div className={`rounded-2xl border bg-slate-900/45 shadow-lg shadow-black/10 transition-colors ${pinned ? 'border-cyan-500/40' : 'border-slate-800'}`}>
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left"
+      >
+        <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color, boxShadow: `0 0 8px ${color}` }} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-slate-100">{sensor.name}</p>
+          <p className="text-[10px] uppercase tracking-wider text-slate-500">{sensor.type}{sensor.unit ? ` · ${sensor.unit}` : ''}</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="font-mono text-sm font-semibold tabular-nums" style={{ color }}>{formatSensorValue(value, sensor.unit)}</span>
+          <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase ${getSensorStatusClasses(status)}`}>{status}</span>
+          <span className={`text-slate-600 transition-transform ${expanded ? 'rotate-180' : ''}`}>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><path d="M6 8L1 3h10z"/></svg>
+          </span>
+        </div>
+      </button>
+
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            key="expanded"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="border-t border-slate-800/60 px-4 pb-4 pt-3 space-y-4">
+              <div className="h-32">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={series} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id={`spark-${sensor.id}`} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={color} stopOpacity={0.3} />
+                        <stop offset="95%" stopColor={color} stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="time" tick={{ fill: '#475569', fontSize: 9 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                    <YAxis tick={{ fill: '#475569', fontSize: 9 }} tickLine={false} axisLine={false} />
+                    <Tooltip contentStyle={{ backgroundColor: '#020617', border: '1px solid #1e293b', borderRadius: '10px', fontSize: '11px', color: '#e2e8f0' }} />
+                    <Area type="monotone" dataKey="value" stroke={color} fill={`url(#spark-${sensor.id})`} strokeWidth={1.5} isAnimationActive={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+              <LiveDataSlider sensor={sensor} realtimeValues={realtimeValues} />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function LiveDataSlider({ sensor, realtimeValues }: { sensor: Sensor; realtimeValues: Map<string, { value: number }> }) {
+  const { overrideSensor, clearOverride } = useSensorStore();
+  const liveValue = getSensorValue(sensor, realtimeValues) ?? 0;
+
+  const sliderMin = sensor.alertMinThreshold ?? 0;
+  const sliderMax = sensor.alertMaxThreshold ?? 100;
+  const sliderStep = (sliderMax - sliderMin) <= 10 ? 0.01 : (sliderMax - sliderMin) <= 100 ? 0.1 : 1;
+
+  const isManual = sensor.mode === 'MANUAL';
+  const isStream = sensor.mode === 'STREAM';
+
+  const [draftValue, setDraftValue] = useState<number>(liveValue);
+  const isDragging = useRef(false);
+
+  useEffect(() => {
+    if (!isDragging.current) setDraftValue(liveValue);
+  }, [liveValue]);
+
+  useEffect(() => {
+    setDraftValue(liveValue);
+  }, [sensor.id]);
+
+  const color = getSensorGradientColor(draftValue, sensor);
+  const pct = sliderMax > sliderMin ? ((draftValue - sliderMin) / (sliderMax - sliderMin)) * 100 : 50;
+
+  function handleSliderChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const next = Number(event.target.value);
+    setDraftValue(next);
+    overrideSensor(sensor.id, next);
   }
 
-  const color = getSensorGradientColor(value, sensor);
+  function handleInputChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const next = Number(event.target.value);
+    setDraftValue(next);
+  }
+
+  function handleInputCommit() {
+    overrideSensor(sensor.id, draftValue);
+  }
+
+  function handleClear() {
+    clearOverride(sensor.id);
+  }
 
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-900/45 p-4 shadow-lg shadow-black/10">
-      <div className="flex items-start justify-between gap-3">
+      <div className="mb-4 flex items-center justify-between gap-2">
         <div>
-          <p className="text-sm font-semibold text-slate-100">{sensor.name}</p>
-          <p className="text-xs text-slate-500">Realtime telemetry stream</p>
+          <p className="text-sm font-semibold text-slate-100">Manual Override</p>
+          <p className="text-xs text-slate-500">{sensor.unit ? `${sliderMin} – ${sliderMax} ${sensor.unit}` : `${sliderMin} – ${sliderMax}`}</p>
         </div>
-        <span className="font-mono text-lg font-semibold" style={{ color }}>{formatSensorValue(value, sensor.unit)}</span>
+        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
+          isManual ? 'border-amber-400/40 bg-amber-400/10 text-amber-300'
+          : isStream ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
+          : 'border-slate-700 bg-slate-800/50 text-slate-400'
+        }`}>
+          {sensor.mode}
+        </span>
       </div>
-      <div className="mt-5 h-56">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={series} margin={{ top: 10, right: 8, left: -24, bottom: 0 }}>
-            <defs>
-              <linearGradient id="rightPanelLiveGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={color} stopOpacity={0.35} />
-                <stop offset="95%" stopColor={color} stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
-            <XAxis dataKey="time" tick={{ fill: '#64748b', fontSize: 10 }} tickLine={false} axisLine={false} />
-            <YAxis tick={{ fill: '#64748b', fontSize: 10 }} tickLine={false} axisLine={false} />
-            <Tooltip contentStyle={{ backgroundColor: '#020617', border: '1px solid #1e293b', borderRadius: '12px', color: '#e2e8f0' }} />
-            <Area type="monotone" dataKey="value" stroke={color} fill="url(#rightPanelLiveGradient)" strokeWidth={2} isAnimationActive animationDuration={250} />
-          </AreaChart>
-        </ResponsiveContainer>
+
+      <div className="mb-4 flex items-center gap-3">
+        <span className="font-mono text-2xl font-semibold tabular-nums" style={{ color }}>{formatSensorValue(draftValue, sensor.unit)}</span>
+        <Input
+          type="number"
+          value={draftValue}
+          min={sliderMin}
+          max={sliderMax}
+          step={sliderStep}
+          onChange={handleInputChange}
+          onBlur={handleInputCommit}
+          onKeyDown={(e) => e.key === 'Enter' && handleInputCommit()}
+          className="h-8 w-24 rounded-xl border-slate-700 bg-slate-950/70 text-right text-xs font-mono"
+        />
       </div>
+
+      <div className="relative mb-4">
+        <div className="pointer-events-none absolute inset-y-0 flex w-full items-center px-0">
+          <div
+            className="h-1 rounded-full"
+            style={{ width: `${Math.min(100, Math.max(0, pct))}%`, background: `linear-gradient(90deg, #22c55e, #eab308, #ef4444)`, boxShadow: `0 0 8px ${color}` }}
+          />
+        </div>
+        <input
+          type="range"
+          min={sliderMin}
+          max={sliderMax}
+          step={sliderStep}
+          value={draftValue}
+          onMouseDown={() => { isDragging.current = true; }}
+          onMouseUp={() => { isDragging.current = false; }}
+          onTouchStart={() => { isDragging.current = true; }}
+          onTouchEnd={() => { isDragging.current = false; }}
+          onChange={handleSliderChange}
+          className="relative h-1 w-full cursor-pointer appearance-none rounded-full bg-slate-800 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-slate-900 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-110 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-slate-900 [&::-moz-range-thumb]:bg-white"
+          style={{ '--slider-color': color } as React.CSSProperties}
+        />
+        <div className="mt-1.5 flex justify-between">
+          <span className="text-[10px] text-slate-600">{sliderMin}{sensor.unit ? ` ${sensor.unit}` : ''}</span>
+          <span className="text-[10px] text-slate-600">{sliderMax}{sensor.unit ? ` ${sensor.unit}` : ''}</span>
+        </div>
+      </div>
+
+      {isManual && (
+        <Button size="sm" variant="outline" onClick={handleClear} className="w-full rounded-xl border-slate-700 text-slate-300 hover:border-cyan-400/50 hover:text-cyan-200">
+          Clear Override → Return to REAL
+        </Button>
+      )}
     </div>
   );
 }
